@@ -41,6 +41,7 @@ import org.gephi.preview.types.EdgeColor;
 import org.gephi.preview.types.EdgeColor.Mode;
 import org.gephi.project.api.ProjectController;
 import org.gephi.project.api.Workspace;
+import org.gephi.statistics.plugin.Modularity;
 import org.openide.util.Lookup;
 //https://github.com/KiranGershenfeld/VisualizingTwitchCommunities/blob/AutoAtlasGeneration/AtlasGeneration/Java/App.java
 
@@ -85,21 +86,19 @@ public class GephiStarter {
         System.out.println("Edges: " + graph.getEdgeCount());
 
         //Remove nodes with degree < 2
-        DegreeRangeFilter degreeFilter = new DegreeRangeFilter();
-        degreeFilter.init(graphModel.getGraph());
-        degreeFilter.setRange(new Range(2, Integer.MAX_VALUE));
-        Query query = filterController.createQuery(degreeFilter);
-        GraphView view = filterController.filter(query);
-        graphModel.setVisibleView(view);
+        
 
         if (options.has("filters")) {
             var filters = options.get("filters").getAsJsonArray();
             for (var el : filters) {
-                var filter = el.getAsJsonObject();
-                var name = filter.get("name").getAsString();
+                var filterOptions = el.getAsJsonObject();
+                var name = filterOptions.get("name").getAsString();
                 switch (name) {
                     case "GiantComponent":
                         filterGiantComponent(graphModel, workspace);
+                        break;
+                    case "Degree":
+                        filterDegree(graphModel,filterOptions);
                         break;
                     default:
                         break;
@@ -107,7 +106,8 @@ public class GephiStarter {
             }
 
         }
-        
+        graph = graphModel.getDirectedGraphVisible();
+        System.out.println("After filtering, nodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
 
         var layouts = options.get("layouts").getAsJsonArray();
         for (var layoutEl : layouts) {
@@ -155,10 +155,21 @@ public class GephiStarter {
     }
 
     private static void filterGiantComponent(GraphModel graphModel, Workspace workspace) {
-        var giantComponent = new GiantComponentBuilder().getFilter(workspace);
         FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
+        var giantComponent = new GiantComponentBuilder().getFilter(workspace);
         var query = filterController.createQuery(giantComponent);
         var view = filterController.filter(query);
+        graphModel.setVisibleView(view);
+    }
+    private static void filterDegree(GraphModel graphModel, JsonObject filterOptions) {
+        FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
+        DegreeRangeFilter degreeFilter = new DegreeRangeFilter();
+        degreeFilter.init(graphModel.getGraph());
+
+        int minDegree = filterOptions.has("minDegree") ? filterOptions.get("minDegree").getAsInt() : 2;
+        degreeFilter.setRange(new Range(minDegree, Integer.MAX_VALUE));
+        Query query = filterController.createQuery(degreeFilter);
+        GraphView view = filterController.filter(query);
         graphModel.setVisibleView(view);
     }
     private static void applyForceAtlas2(GraphModel graphModel, int steps) {
@@ -206,6 +217,10 @@ public class GephiStarter {
         appearanceController.transform(degreeRanking);
     }
     private static void partitionNodes(GraphModel graphModel, String columnName) {
+        if (columnName.equals("modularity_class")) {
+            Modularity modularity = new Modularity();
+            modularity.execute(graphModel);
+        }
         AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
         AppearanceModel appearanceModel = appearanceController.getModel();
         DirectedGraph graph = graphModel.getDirectedGraph();
