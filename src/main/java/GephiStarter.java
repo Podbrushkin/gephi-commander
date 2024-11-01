@@ -16,6 +16,7 @@ import org.gephi.appearance.plugin.palette.PaletteManager;
 import org.gephi.filters.api.FilterController;
 import org.gephi.filters.api.Query;
 import org.gephi.filters.api.Range;
+import org.gephi.filters.plugin.graph.GiantComponentBuilder;
 import org.gephi.filters.plugin.graph.DegreeRangeBuilder.DegreeRangeFilter;
 import org.gephi.graph.api.Column;
 import org.gephi.graph.api.DirectedGraph;
@@ -90,6 +91,22 @@ public class GephiStarter {
         Query query = filterController.createQuery(degreeFilter);
         GraphView view = filterController.filter(query);
         graphModel.setVisibleView(view);
+
+        if (options.has("filters")) {
+            var filters = options.get("filters").getAsJsonArray();
+            for (var el : filters) {
+                var filter = el.getAsJsonObject();
+                var name = filter.get("name").getAsString();
+                switch (name) {
+                    case "GiantComponent":
+                        filterGiantComponent(graphModel, workspace);
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+        }
         
 
         var layouts = options.get("layouts").getAsJsonArray();
@@ -135,6 +152,14 @@ public class GephiStarter {
             ex.printStackTrace();
             return;
         }
+    }
+
+    private static void filterGiantComponent(GraphModel graphModel, Workspace workspace) {
+        var giantComponent = new GiantComponentBuilder().getFilter(workspace);
+        FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
+        var query = filterController.createQuery(giantComponent);
+        var view = filterController.filter(query);
+        graphModel.setVisibleView(view);
     }
     private static void applyForceAtlas2(GraphModel graphModel, int steps) {
         //FORCE ATLAS INITIALIZATION
