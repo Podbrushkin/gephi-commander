@@ -3,6 +3,7 @@ import java.awt.Font;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 
 import org.gephi.appearance.api.AppearanceController;
 import org.gephi.appearance.api.AppearanceModel;
@@ -16,21 +17,28 @@ import org.gephi.appearance.plugin.palette.PaletteManager;
 import org.gephi.filters.api.FilterController;
 import org.gephi.filters.api.Query;
 import org.gephi.filters.api.Range;
-import org.gephi.filters.plugin.graph.GiantComponentBuilder;
 import org.gephi.filters.plugin.graph.DegreeRangeBuilder.DegreeRangeFilter;
+import org.gephi.filters.plugin.graph.GiantComponentBuilder;
+import org.gephi.filters.plugin.graph.KCoreBuilder;
+import org.gephi.filters.plugin.partition.PartitionBuilder.NodePartitionFilter;
 import org.gephi.graph.api.Column;
 import org.gephi.graph.api.DirectedGraph;
 import org.gephi.graph.api.GraphController;
 import org.gephi.graph.api.GraphModel;
-import org.gephi.graph.api.GraphView;
 import org.gephi.io.exporter.api.ExportController;
+import org.gephi.io.exporter.preview.PNGExporter;
 import org.gephi.io.importer.api.Container;
 import org.gephi.io.importer.api.EdgeDirectionDefault;
 import org.gephi.io.importer.api.ImportController;
+import org.gephi.io.importer.api.ImportUtils;
 import org.gephi.io.processor.plugin.DefaultProcessor;
 import org.gephi.layout.plugin.force.StepDisplacement;
 import org.gephi.layout.plugin.force.yifanHu.YifanHuLayout;
+import org.gephi.layout.plugin.force.yifanHu.YifanHuProportional;
 import org.gephi.layout.plugin.forceAtlas2.ForceAtlas2;
+import org.gephi.layout.plugin.openord.OpenOrdLayoutBuilder;
+import org.gephi.layout.plugin.random.Random;
+import org.gephi.layout.plugin.random.RandomLayout;
 import org.gephi.layout.spi.Layout;
 import org.gephi.preview.api.PreviewController;
 import org.gephi.preview.api.PreviewModel;
@@ -41,6 +49,7 @@ import org.gephi.preview.types.EdgeColor;
 import org.gephi.preview.types.EdgeColor.Mode;
 import org.gephi.project.api.ProjectController;
 import org.gephi.project.api.Workspace;
+import org.gephi.statistics.plugin.ConnectedComponents;
 import org.gephi.statistics.plugin.Modularity;
 import org.openide.util.Lookup;
 //https://github.com/KiranGershenfeld/VisualizingTwitchCommunities/blob/AutoAtlasGeneration/AtlasGeneration/Java/App.java
@@ -65,7 +74,6 @@ public class GephiStarter {
         //Get models and controllers for this new workspace - will be useful later
         GraphModel graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         ImportController importController = Lookup.getDefault().lookup(ImportController.class);
-        FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
         
         //Import file       
         Container container;
@@ -85,29 +93,71 @@ public class GephiStarter {
         System.out.println("Nodes: " + graph.getNodeCount());
         System.out.println("Edges: " + graph.getEdgeCount());
 
-        //Remove nodes with degree < 2
         
+        var connectedComponents = new ConnectedComponents();
+        connectedComponents.setDirected(false);
+        connectedComponents.execute(graphModel);
+        System.out.println("Node columns:");
+        System.out.println("id\ttitle\ttype");
+        for (var col : graphModel.getNodeTable()) {
+            System.out.printf("%s\t%s\t%s%n",col.getId(),col.getTitle(),col.getTypeClass().getSimpleName());
+        }
 
         if (options.has("filters")) {
             var filters = options.get("filters").getAsJsonArray();
+            var queries = new ArrayList<Query>();
             for (var el : filters) {
                 var filterOptions = el.getAsJsonObject();
                 var name = filterOptions.get("name").getAsString();
                 switch (name) {
                     case "GiantComponent":
-                        filterGiantComponent(graphModel, workspace);
+                        queries.add(getFilterGiantComponent(graphModel, workspace));
                         break;
                     case "Degree":
-                        filterDegree(graphModel,filterOptions);
+                        queries.add(getFilterDegree(graphModel,filterOptions));
                         break;
+                    case "K-core":
+                        queries.add(getKcore(graphModel,filterOptions));
+                        break;
+                    case "Partition":
+                        queries.add(getPartitionFilter(graphModel,filterOptions));
+                        break;
+                        
                     default:
+                        System.out.printf("Filter \"%s\" not found!%n", name);
                         break;
                 }
             }
+            var filterController = Lookup.getDefault().lookup(FilterController.class);
+            // if (queries.size() >= 1) {
+            for (int i = 1; i < queries.size(); i++) {
+                var q = queries.get(i);
+                var prevQ = queries.get(i-1);
+                filterController.setSubQuery(prevQ,q);
+                System.out.printf("Set %s as subquery of %s%n",q.getName(),prevQ.getName());
+            }
+            filterController.add(queries.get(0));
+            filterController.filterVisible(queries.get(0));
+            
+            // }
+            // IntersectionOperator intersectionOperator = new IntersectionOperator();
+            
+            // Query intersection = filterController.createQuery(intersectionOperator);
+            // for (var q : queries) {
+            //     filterController.setSubQuery(intersection, q);
+            // }
+            // var view = filterController.filter(intersection);
+            // graphModel.setVisibleView(view);
 
+
+            
         }
-        graph = graphModel.getDirectedGraphVisible();
-        System.out.println("After filtering, nodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
+        
+        // filtersTry();
+        graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        var graphVis = graphModel.getGraph();
+        System.out.println("After filtering, nodes: " + graphVis.getNodeCount() + " Edges: " + graphVis.getEdgeCount());
+        
 
         var layouts = options.get("layouts").getAsJsonArray();
         for (var layoutEl : layouts) {
@@ -121,10 +171,19 @@ public class GephiStarter {
                 case "YifanHu" : {
                     applyYifanHu(graphModel, steps); break;
                 }
-                case "ForceAtlas2" : {
-                    applyForceAtlas2(graphModel, steps); break;
+                case "YifanHuProportional" : {
+                    applyYifanHuProportional(graphModel, steps); break;
                 }
-                //default : applyLayout(graphModel);
+                case "ForceAtlas2" : {
+                    applyForceAtlas2(graphModel, layout); break;
+                }
+                case "OpenOrd" : {
+                    applyOpenOrd(graphModel, layout); break;
+                }
+                case "RandomLayout" : {
+                    applyRandomLayout(graphModel, layout); break;
+                }
+                //default : applyLayout(graphModel); 
     
             }
         }
@@ -140,43 +199,118 @@ public class GephiStarter {
             partitionNodes(graphModel, options.get("partitionNodesBy").getAsString());
         }
 
-
-        setGraphPreview(options.getAsJsonObject("preview"));
+        // var previewOpts = options.has("preview") ? options.getAsJsonObject("preview") : new JsonObject();
+        if (options.has("preview")) {
+            setGraphPreview(options.getAsJsonObject("preview"));
+        }
 
         //Export
         ExportController ec = Lookup.getDefault().lookup(ExportController.class);
         try {
             
-            ec.exportFile(outFile);
+            if (outFile.getName().endsWith(".png") &&
+                options.has("export") && 
+                options.getAsJsonObject("export").has("resolution")) {
+                
+                var res = options.getAsJsonObject("export").getAsJsonArray("resolution");
+                int x = res.get(0).getAsInt();
+                int y = res.size() == 2 ? res.get(1).getAsInt() : x;
+                var pngExporter = new PNGExporter();
+                pngExporter.setWorkspace(workspace);
+                pngExporter.setWidth(x);
+                pngExporter.setHeight(y);
+                ec.exportFile(outFile, pngExporter);
+
+            } else {
+                ec.exportFile(outFile);
+            }
+            
+            
         } catch (IOException ex) {
             ex.printStackTrace();
             return;
         }
     }
 
-    private static void filterGiantComponent(GraphModel graphModel, Workspace workspace) {
+    private static Query getFilterGiantComponent(GraphModel graphModel, Workspace workspace) {
         FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
-        var giantComponent = new GiantComponentBuilder().getFilter(workspace);
+        graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        var giantComponent = new GiantComponentBuilder.GiantComponentFilter();
+        
+        giantComponent.init(graphModel.getGraphVisible());
         var query = filterController.createQuery(giantComponent);
+        // filterController.filterVisible(query);
         var view = filterController.filter(query);
         graphModel.setVisibleView(view);
+        return query;
     }
-    private static void filterDegree(GraphModel graphModel, JsonObject filterOptions) {
+    private static Query getFilterDegree(GraphModel graphModel, JsonObject filterOptions) {
         FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
+        graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         DegreeRangeFilter degreeFilter = new DegreeRangeFilter();
-        degreeFilter.init(graphModel.getGraph());
+        degreeFilter.init(graphModel.getGraphVisible());
 
         int minDegree = filterOptions.has("minDegree") ? filterOptions.get("minDegree").getAsInt() : 2;
         degreeFilter.setRange(new Range(minDegree, Integer.MAX_VALUE));
         Query query = filterController.createQuery(degreeFilter);
-        GraphView view = filterController.filter(query);
+        var view = filterController.filter(query);
         graphModel.setVisibleView(view);
+        return query;
     }
-    private static void applyForceAtlas2(GraphModel graphModel, int steps) {
-        //FORCE ATLAS INITIALIZATION
+
+    private static Query getKcore(GraphModel graphModel, JsonObject filterOptions) {
+        FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
+        
+        int minDegree = filterOptions.has("minDegree") ? filterOptions.get("minDegree").getAsInt() : 2;
+        var filter = new KCoreBuilder.KCoreFilter();
+        filter.filter(graphModel.getUndirectedGraphVisible());
+        filter.setK(minDegree);
+        var query = filterController.createQuery(filter);
+        return query;
+    }
+
+    private static Query getPartitionFilter(GraphModel graphModel, JsonObject filterOptions) {
+        var columnId = filterOptions.get("columnId").getAsString();
+        var partitions =  filterOptions.get("partitions").getAsJsonArray();
+
+        var graph = graphModel.getUndirectedGraphVisible();
+
+        var appearanceModel = Lookup.getDefault().lookup(AppearanceController.class).getModel();
+        var column = graphModel.getNodeTable().getColumn(columnId);
+        var nodePartition = appearanceModel.getNodePartition(column);
+        var coll = nodePartition.getSortedValues(graph);
+        // nodePartition.percentage(filterOptions, graph);
+        System.out.printf("Distinct values of column %s:%n",columnId);
+        System.out.println("value\tpercentage");
+        for (var el : coll) {
+            float perc = nodePartition.percentage(el, graph);
+            System.out.printf("%s\t%s%n",el,perc);
+        }
+        
+        var partitionFilter = new NodePartitionFilter(appearanceModel,appearanceModel.getNodePartition(column));
+        System.out.printf("partitionFilter.getParts(): %s%n",partitionFilter.getParts());
+        partitionFilter.unselectAll();
+        for (var p : partitions) {
+            if (p.isJsonPrimitive()) {
+                partitionFilter.addPart(p.getAsInt());
+            } else {
+                partitionFilter.addPart(p.getAsString());
+            }
+        }
+        FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
+        var query = filterController.createQuery(partitionFilter);
+        return query;
+    }
+    private static void applyForceAtlas2(GraphModel graphModel, JsonObject layoutOptions) {
+        int steps = layoutOptions.has("steps") ? layoutOptions.get("steps").getAsInt() : 200;
+        
         ForceAtlas2 layout = new ForceAtlas2(null);
         layout.setGraphModel(graphModel);
         layout.resetPropertiesValues();
+        if (layoutOptions.has("scaling")) {
+            var scaling = layoutOptions.get("scaling").getAsDouble();
+            layout.setScalingRatio(scaling);
+        }
         
         runAlgoFor(layout, steps);
         return;
@@ -198,6 +332,41 @@ public class GephiStarter {
         }
         runAlgoFor(layout,steps);
     }
+
+    private static void applyYifanHuProportional(GraphModel graphModel, int steps) {
+        var layout =  new YifanHuProportional().buildLayout();
+        layout.resetPropertiesValues();
+        layout.setGraphModel(graphModel);
+        runAlgoFor(layout, steps);
+    }
+    
+    private static void applyOpenOrd(GraphModel graphModel, JsonObject props) {
+        var layout =  new OpenOrdLayoutBuilder().buildLayout();
+        layout.resetPropertiesValues();
+        layout.setGraphModel(graphModel);
+        if (props.has("steps")) {
+            runAlgoFor(layout, props.get("steps").getAsInt());
+        }
+        else {
+            int maxSteps = props.has("maxSteps") ? props.get("maxSteps").getAsInt() : Integer.MAX_VALUE;
+            runAlgoForMaximum(layout, maxSteps);
+        }
+        
+    }
+    private static void applyRandomLayout(GraphModel graphModel, JsonObject props) {
+        int size = props.has("size") ? props.get("size").getAsInt() : 200;
+        var layout =  new RandomLayout(new Random(), size);
+        layout.setGraphModel(graphModel);
+        // layout.resetPropertiesValues();
+        if (props.has("steps")) {
+            runAlgoFor(layout, props.get("steps").getAsInt());
+        }
+        else {
+            int maxSteps = props.has("maxSteps") ? props.get("maxSteps").getAsInt() : Integer.MAX_VALUE;
+            runAlgoForMaximum(layout, maxSteps);
+        }
+    }
+
 
     private static void rankNodesByDegree(GraphModel graphModel, JsonObject rankingOptions) {
         AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
@@ -247,8 +416,8 @@ public class GephiStarter {
 
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_SIZE, 4.0f);
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_OPACITY, 40);
-        model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_COLOR, new DependantColor (Color.BLACK));
-
+        model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_COLOR, new DependantColor(Color.BLACK));
+        
         //Edge Properties
         model.getProperties().putValue(PreviewProperty.SHOW_EDGES, Boolean.TRUE);
         
@@ -256,6 +425,8 @@ public class GephiStarter {
         if (edgeColorEl != null) {
             Mode mode = Mode.valueOf(edgeColorEl.getAsString().toUpperCase());
             model.getProperties().putValue(PreviewProperty.EDGE_COLOR, new EdgeColor(mode));
+        } else {
+            model.getProperties().putValue(PreviewProperty.EDGE_COLOR, new DependantOriginalColor(Color.WHITE));
         }
 
 
@@ -270,9 +441,15 @@ public class GephiStarter {
 
 
         //Image Properties
-        model.getProperties().putValue(PreviewProperty.BACKGROUND_COLOR, Color.BLACK);
-
-        return;
+        if (previewOptions.has("bgColor")) {
+            var colorName = previewOptions.get("bgColor").getAsString();
+            var color = ImportUtils.parseColor(colorName);
+            if (color != null) {
+                model.getProperties().putValue(PreviewProperty.BACKGROUND_COLOR, color);
+            } else {
+                System.out.println("Such color haven't been found: "+colorName);
+            }
+        }
     }
 
     private static void runAlgoFor(Layout layout, int steps) {
@@ -282,5 +459,15 @@ public class GephiStarter {
             layout.goAlgo();
         }
         layout.endAlgo();
+    }
+    private static void runAlgoForMaximum(Layout layout, int maxSteps) {
+        System.out.printf("Applying layout %s with no more than %s steps...%n",layout.getClass().getSimpleName(), maxSteps); 
+        layout.initAlgo();
+        int stepCount = 1;
+        for (; stepCount <= maxSteps && layout.canAlgo(); stepCount++) {
+            layout.goAlgo();
+        }
+        layout.endAlgo();
+        System.out.printf("It was %s steps.%n",stepCount);
     }
 }
