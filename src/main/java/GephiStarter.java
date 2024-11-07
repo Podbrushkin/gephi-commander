@@ -54,6 +54,7 @@ import org.gephi.statistics.plugin.Modularity;
 import org.openide.util.Lookup;
 //https://github.com/KiranGershenfeld/VisualizingTwitchCommunities/blob/AutoAtlasGeneration/AtlasGeneration/Java/App.java
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -62,9 +63,9 @@ public class GephiStarter {
     
     public static void main(String[] args) {
         var options = JsonParser.parseReader(new InputStreamReader(System.in)).getAsJsonObject();
-        
+        // System.out.println(options.toString());
+        // System.out.println(options.keySet());
         var file = new File(options.get("InFile").getAsString());
-        var outFile = new File(options.get("OutFile").getAsString());
         
         //Init a project - and therefore a workspace
         ProjectController pc = Lookup.getDefault().lookup(ProjectController.class);
@@ -88,78 +89,100 @@ public class GephiStarter {
         //Append imported data to GraphAPI
         importController.process(container, new DefaultProcessor(), workspace);
 
-        //See if graph is well imported
-        DirectedGraph graph = graphModel.getDirectedGraph();
-        System.out.println("Nodes: " + graph.getNodeCount());
-        System.out.println("Edges: " + graph.getEdgeCount());
-
-        
-        var connectedComponents = new ConnectedComponents();
-        connectedComponents.setDirected(false);
-        connectedComponents.execute(graphModel);
-        System.out.println("Node columns:");
-        System.out.println("id\ttitle\ttype");
-        for (var col : graphModel.getNodeTable()) {
-            System.out.printf("%s\t%s\t%s%n",col.getId(),col.getTitle(),col.getTypeClass().getSimpleName());
+        for (String key : options.keySet()) {
+            switch (key) {
+                case "statistics":
+                    var statsOpts = options.get("statistics").getAsJsonArray();
+                    applyStatistics(statsOpts);
+                    break;
+                case "filters":
+                    applyFilters(options.get("filters").getAsJsonArray());
+                    break;
+                case "layouts":
+                    applyLayouts(options.get("layouts").getAsJsonArray());
+                    break;
+                case "preview":
+                    setGraphPreview(options.getAsJsonObject("preview"));
+                    break;
+                case "colorNodesByColumn":
+                    colorNodesByColumn(graphModel, options.get("colorNodesByColumn").getAsString());
+                    break;
+                case "sizeNodesByDegree":
+                    sizeNodesByDegree(options.getAsJsonObject("sizeNodesByDegree"));
+                    break;
+                case "print":
+                    printInfo(options.get("print").getAsJsonArray());
+                    break;
+                case "export":
+                    export(options.getAsJsonObject("export"));
+                    break;
+                default:
+                    System.out.println("Unknown root element "+key);
+                    break;
+            }
         }
+        
+    }
 
-        if (options.has("filters")) {
-            var filters = options.get("filters").getAsJsonArray();
-            var queries = new ArrayList<Query>();
-            for (var el : filters) {
-                var filterOptions = el.getAsJsonObject();
-                var name = filterOptions.get("name").getAsString();
-                switch (name) {
-                    case "GiantComponent":
-                        queries.add(getFilterGiantComponent(graphModel, workspace));
-                        break;
-                    case "Degree":
-                        queries.add(getFilterDegree(graphModel,filterOptions));
-                        break;
-                    case "K-core":
-                        queries.add(getKcore(graphModel,filterOptions));
-                        break;
-                    case "Partition":
-                        queries.add(getPartitionFilter(graphModel,filterOptions));
-                        break;
-                        
-                    default:
-                        System.out.printf("Filter \"%s\" not found!%n", name);
-                        break;
+    private static void applyStatistics(JsonArray options) {
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        for (var el : options) {
+            var name = el.getAsString();
+            switch (name) {
+                case "Modularity" : {
+                    var modularity = new Modularity();
+                    modularity.execute(graphModel);
+                    break;
                 }
+                case "ConnectedComponents" : {
+                    var connectedComponents = new ConnectedComponents();
+                    connectedComponents.setDirected(false);
+                    connectedComponents.execute(graphModel);
+                    break;
+                }
+                default : System.out.println("No such statistics: "+name);
             }
-            var filterController = Lookup.getDefault().lookup(FilterController.class);
-            // if (queries.size() >= 1) {
-            for (int i = 1; i < queries.size(); i++) {
-                var q = queries.get(i);
-                var prevQ = queries.get(i-1);
-                filterController.setSubQuery(prevQ,q);
-                System.out.printf("Set %s as subquery of %s%n",q.getName(),prevQ.getName());
-            }
-            filterController.add(queries.get(0));
-            filterController.filterVisible(queries.get(0));
-            
-            // }
-            // IntersectionOperator intersectionOperator = new IntersectionOperator();
-            
-            // Query intersection = filterController.createQuery(intersectionOperator);
-            // for (var q : queries) {
-            //     filterController.setSubQuery(intersection, q);
-            // }
-            // var view = filterController.filter(intersection);
-            // graphModel.setVisibleView(view);
-
-
-            
         }
-        
-        // filtersTry();
-        graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
-        var graphVis = graphModel.getGraph();
-        System.out.println("After filtering, nodes: " + graphVis.getNodeCount() + " Edges: " + graphVis.getEdgeCount());
-        
+    }
 
-        var layouts = options.get("layouts").getAsJsonArray();
+    private static void applyFilters(JsonArray filters) {
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        var queries = new ArrayList<Query>();
+        for (var el : filters) {
+            var filterOptions = el.getAsJsonObject();
+            var name = filterOptions.get("name").getAsString();
+            switch (name) {
+                case "GiantComponent":
+                    queries.add(getFilterGiantComponent());
+                    break;
+                case "Degree":
+                    queries.add(getFilterDegree(filterOptions));
+                    break;
+                case "K-core":
+                    queries.add(getKcore(graphModel,filterOptions));
+                    break;
+                case "Partition":
+                    queries.add(getPartitionFilter(graphModel,filterOptions));
+                    break;
+                    
+                default:
+                    System.out.printf("Filter \"%s\" not found!%n", name);
+                    break;
+            }
+        }
+        var filterController = Lookup.getDefault().lookup(FilterController.class);
+        // if (queries.size() >= 1) {
+        for (int i = 1; i < queries.size(); i++) {
+            var q = queries.get(i);
+            var prevQ = queries.get(i-1);
+            filterController.setSubQuery(prevQ,q);
+            System.out.printf("Set %s as subquery of %s%n",q.getName(),prevQ.getName());
+        }
+        filterController.add(queries.get(0));
+        filterController.filterVisible(queries.get(0));
+    }
+    private static void applyLayouts(JsonArray layouts) {
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         for (var layoutEl : layouts) {
             var layout = layoutEl.getAsJsonObject();
             // System.out.println(layout.getAsString());
@@ -187,32 +210,20 @@ public class GephiStarter {
     
             }
         }
-        
+    }
 
-        if (options.has("rankNodesByDegree")) {
-            rankNodesByDegree(graphModel, options.getAsJsonObject("rankNodesByDegree"));
-        }
-
-        
-        
-        if (options.has("partitionNodesBy")) {
-            partitionNodes(graphModel, options.get("partitionNodesBy").getAsString());
-        }
-
-        // var previewOpts = options.has("preview") ? options.getAsJsonObject("preview") : new JsonObject();
-        if (options.has("preview")) {
-            setGraphPreview(options.getAsJsonObject("preview"));
-        }
-
-        //Export
+    private static void export(JsonObject options) {
         ExportController ec = Lookup.getDefault().lookup(ExportController.class);
+        var pc = Lookup.getDefault().lookup(ProjectController.class);
+        var workspace = pc.getCurrentWorkspace();
+        String filename = options.has("file") ? options.get("file").getAsString() : "gephi.pdf";
+        File outFile = new File(filename);
         try {
             
             if (outFile.getName().endsWith(".png") &&
-                options.has("export") && 
-                options.getAsJsonObject("export").has("resolution")) {
+                options.has("resolution")) {
                 
-                var res = options.getAsJsonObject("export").getAsJsonArray("resolution");
+                var res = options.getAsJsonArray("resolution");
                 int x = res.get(0).getAsInt();
                 int y = res.size() == 2 ? res.get(1).getAsInt() : x;
                 var pngExporter = new PNGExporter();
@@ -224,7 +235,7 @@ public class GephiStarter {
             } else {
                 ec.exportFile(outFile);
             }
-            
+            System.out.println("Exported to "+outFile);
             
         } catch (IOException ex) {
             ex.printStackTrace();
@@ -232,9 +243,32 @@ public class GephiStarter {
         }
     }
 
-    private static Query getFilterGiantComponent(GraphModel graphModel, Workspace workspace) {
+    private static void printInfo(JsonArray options) {
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        for (var el : options) {
+            var name = el.getAsString();
+            switch (name) {
+                case "count":
+                    var graphVis = graphModel.getGraphVisible();
+                    System.out.println("Nodes: " + graphVis.getNodeCount() + " Edges: " + graphVis.getEdgeCount());
+                    break;
+                case "nodeColumns":
+                    System.out.println("Node columns:");
+                    System.out.println("id\ttitle\ttype");
+                    for (var col : graphModel.getNodeTable()) {
+                        System.out.printf("%s\t%s\t%s%n",col.getId(),col.getTitle(),col.getTypeClass().getSimpleName());
+                    }
+
+                default:
+                    System.out.println("No such printInfo: "+name);
+                    break;
+            }
+        }
+    }
+
+    private static Query getFilterGiantComponent() {
         FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
-        graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         var giantComponent = new GiantComponentBuilder.GiantComponentFilter();
         
         giantComponent.init(graphModel.getGraphVisible());
@@ -244,9 +278,9 @@ public class GephiStarter {
         graphModel.setVisibleView(view);
         return query;
     }
-    private static Query getFilterDegree(GraphModel graphModel, JsonObject filterOptions) {
+    private static Query getFilterDegree(JsonObject filterOptions) {
         FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
-        graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         DegreeRangeFilter degreeFilter = new DegreeRangeFilter();
         degreeFilter.init(graphModel.getGraphVisible());
 
@@ -282,9 +316,14 @@ public class GephiStarter {
         // nodePartition.percentage(filterOptions, graph);
         System.out.printf("Distinct values of column %s:%n",columnId);
         System.out.println("value\tpercentage");
+        int i = 0;
         for (var el : coll) {
             float perc = nodePartition.percentage(el, graph);
             System.out.printf("%s\t%s%n",el,perc);
+            if (i++ == 20) {
+                System.out.println("...and more");
+                break;
+            }
         }
         
         var partitionFilter = new NodePartitionFilter(appearanceModel,appearanceModel.getNodePartition(column));
@@ -368,8 +407,9 @@ public class GephiStarter {
     }
 
 
-    private static void rankNodesByDegree(GraphModel graphModel, JsonObject rankingOptions) {
-        AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
+    private static void sizeNodesByDegree(JsonObject rankingOptions) {
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        var appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
         AppearanceModel appearanceModel = appearanceController.getModel();
 
         Function degreeRanking = appearanceModel.getNodeFunction(graphModel.defaultColumns()
@@ -385,11 +425,8 @@ public class GephiStarter {
 
         appearanceController.transform(degreeRanking);
     }
-    private static void partitionNodes(GraphModel graphModel, String columnName) {
-        if (columnName.equals("modularity_class")) {
-            Modularity modularity = new Modularity();
-            modularity.execute(graphModel);
-        }
+    private static void colorNodesByColumn(GraphModel graphModel, String columnName) {
+        
         AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
         AppearanceModel appearanceModel = appearanceController.getModel();
         DirectedGraph graph = graphModel.getDirectedGraph();
