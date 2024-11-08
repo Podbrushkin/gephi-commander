@@ -4,8 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
+import java.util.stream.Collectors;
 
 import org.gephi.appearance.api.AppearanceController;
 import org.gephi.appearance.api.AppearanceModel;
@@ -32,7 +31,6 @@ import org.gephi.graph.api.DirectedGraph;
 import org.gephi.graph.api.Graph;
 import org.gephi.graph.api.GraphController;
 import org.gephi.graph.api.GraphModel;
-import org.gephi.graph.api.GraphView;
 import org.gephi.io.exporter.api.ExportController;
 import org.gephi.io.exporter.preview.PNGExporter;
 import org.gephi.io.exporter.spi.GraphExporter;
@@ -123,22 +121,62 @@ public class GephiStarter {
         
     }
     private static void tryFilters() {
+        var file = new File ("C:\\Users\\user\\AppData\\Local\\Programs\\neo4j-community-5.22.0\\dataMoviesBuiltin\\graphviz.dot");
+
+        //Init a project - and therefore a workspace
+        ProjectController pc = Lookup.getDefault().lookup(ProjectController.class);
+        pc.newProject();
+        Workspace workspace = pc.getCurrentWorkspace();
+
+        //Get models and controllers for this new workspace - will be useful later
         GraphModel graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
-        
+        PreviewModel model = Lookup.getDefault().lookup(PreviewController.class).getModel();
+        ImportController importController = Lookup.getDefault().lookup(ImportController.class);
         FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
-		DirectedGraph graph = graphModel.getDirectedGraphVisible();
+        AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
+        AppearanceModel appearanceModel = appearanceController.getModel();
+
+        //Import file       
+        Container container;
+        try {
+            container = importController.importFile(file);
+            container.getLoader().setEdgeDefault(EdgeDirectionDefault.DIRECTED);   //Force DIRECTED
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return;
+        }
+
+        //Append imported data to GraphAPI
+        importController.process(container, new DefaultProcessor(), workspace);
+
+        //See if graph is well imported
+        DirectedGraph graph = graphModel.getDirectedGraph();
+        System.out.println("Nodes: " + graph.getNodeCount());
+        System.out.println("Edges: " + graph.getEdgeCount());
+        
+        printCounts(graphModel.getDirectedGraph());
+
+
+
+
+
+
+        
+        
+        // FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
+		// DirectedGraph graph = graphModel.getDirectedGraphVisible();
         
         System.out.println("Before filtering\nNodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
 
         // Keep only nodes with group=Person
-        AppearanceModel appearanceModel = Lookup.getDefault().lookup(AppearanceController.class).getModel();
+        // AppearanceModel appearanceModel = Lookup.getDefault().lookup(AppearanceController.class).getModel();
         NodePartitionFilter partitionFilter = new NodePartitionFilter(appearanceModel,appearanceModel.getNodePartition(graphModel.getNodeTable().getColumn("group")));
         partitionFilter.unselectAll();
         partitionFilter.addPart("Person");
         Query query2 = filterController.createQuery(partitionFilter);
-        GraphView view2 = filterController.filter(query2);
-        graphModel.setVisibleView(view2);    //Set the filter result as the visible view
-        graph = graphModel.getDirectedGraphVisible();   // Update var to latest
+        // GraphView view2 = filterController.filter(query2);
+        // graphModel.setVisibleView(view2);    //Set the filter result as the visible view
+        // graph = graphModel.getDirectedGraphVisible();   // Update var to latest
         System.out.println("After PartitionFilter\nNodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
         
         
@@ -147,17 +185,49 @@ public class GephiStarter {
         filter.filter(graph);
         filter.setK(1);
         var query0 = filterController.createQuery(filter);
-        var view0 = filterController.filter(query0);
-        graphModel.setVisibleView(view0);
+        // GraphView view0 = filterController.filter(query0);
+        // graphModel.setVisibleView(view0);
         System.out.println("After K-Core\nNodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
 
-        System.out.println("How do we get this graph again?");
+        filterController.setSubQuery(query0, query2);
+        filterController.filterVisible(query0);
+        System.out.println("After subquery\nNodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
+
+        /* //Combine two filters with AND - Set query and query2 as sub-query of AND
+        IntersectionOperator intersectionOperator = new IntersectionOperator();
+        Query query3 = filterController.createQuery(intersectionOperator);
+        filterController.setSubQuery(query3, query2);
+        filterController.setSubQuery(query3, query0);
+        GraphView view3 = filterController.filter(query3);
+        graphModel.setVisibleView(view3);    //Set the filter result as the visible view */
+
+        try {
+
+            /* ExportController ec = Lookup.getDefault().lookup(ExportController.class);
+            var exporter = (GraphExporter) ec.getExporter("png");
+            exporter.setExportVisible(true);
+            // exporter.setWorkspace(workspace);
+            ec.exportFile(new File("delme.png"), exporter); */
+
+            ExportController ec = Lookup.getDefault().lookup(ExportController.class);
+            ec.exportFile(new File("delme.pdf"));
+        
+        // graph.
+
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        /* System.out.println("How do we get this graph again?");
         GraphModel graphModelx = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
-        printCounts(graph);
-        printCounts(graphModelx.getGraphVisible());
+        graphModelx.setVisibleView(view0);
         printCounts(graphModelx.getDirectedGraphVisible());
+        printCounts(graphModelx.getGraphVisible());
         printCounts(graphModelx.getGraph(graphModelx.getVisibleView()));
-        var filterControllerx = Lookup.getDefault().lookup(FilterController.class);
+        printCounts(graphModel.getDirectedGraphVisible());
+        printCounts(graphModel.getGraphVisible());
+        printCounts(graphModel.getGraph(graphModel.getVisibleView()));
+        // var filterControllerx = Lookup.getDefault().lookup(FilterController.class); */
         
 
     }
@@ -215,25 +285,28 @@ public class GephiStarter {
 
     private static void applyFilters(JsonArray filters) {
         if (filters.size() == 0) {return;}
-        var queries = new ArrayList<Query>();
-        for (var el : filters) {
+        var queriesReversedOrder = new ArrayList<Query>();
+        
+        // for (var el : filters) {
+        for (int i = filters.size()-1; i >= 0; i--) {
+            var el = filters.get(i);
             var filterOptions = el.getAsJsonObject();
             var name = filterOptions.get("name").getAsString();
             switch (name) {
                 case "GiantComponent":
-                    queries.add(getFilterGiantComponent());
+                    queriesReversedOrder.add(getFilterGiantComponent());
                     break;
                 case "Degree":
-                    queries.add(getFilterDegree(filterOptions));
+                    queriesReversedOrder.add(getFilterDegree(filterOptions));
                     break;
                 case "K-core":
-                    queries.add(getKcore(filterOptions));
+                    queriesReversedOrder.add(getKcore(filterOptions));
                     break;
                 case "Partition":
-                    queries.add(getPartitionFilter(filterOptions));
+                    queriesReversedOrder.add(getPartitionFilter(filterOptions));
                     break;
                 case "AttributeEquals":
-                    queries.add(getAttributeEqualsFilter(filterOptions));
+                    queriesReversedOrder.add(getAttributeEqualsFilter(filterOptions));
                     break;
                     
                 default:
@@ -243,14 +316,19 @@ public class GephiStarter {
         }
         var filterController = Lookup.getDefault().lookup(FilterController.class);
         // if (queries.size() >= 1) {
-        for (int i = 1; i < queries.size(); i++) {
-            var q = queries.get(i);
-            var prevQ = queries.get(i-1);
-            filterController.setSubQuery(prevQ,q);
-            System.out.printf("Set %s as subquery of %s%n",q.getName(),prevQ.getName());
+        // Last filter you want to apply should be root filter, first filter should be deepest
+        var filterTree = queriesReversedOrder.stream().map(Query::getName).collect(Collectors.joining(" -> "));
+        System.out.println(filterTree);
+            
+        // for (int i = queries.size()-1; i > 0; i--) {
+        for (int i = 0; i < queriesReversedOrder.size()-1; i++) {
+            var parentQuery = queriesReversedOrder.get(i);
+            var subQuery = queriesReversedOrder.get(i+1);
+            filterController.setSubQuery(parentQuery,subQuery);
+            // System.out.printf("Now %s has a subquery %s%n",parentQuery.getName(),subQuery.getName());
         }
-        filterController.add(queries.get(0));
-        filterController.filterVisible(queries.get(0));
+        // filterController.add(queries.get(0));
+        filterController.filterVisible(queriesReversedOrder.get(0));
     }
     private static void applyLayouts(JsonArray layouts) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
@@ -703,6 +781,7 @@ public class GephiStarter {
         ExportController ec = Lookup.getDefault().lookup(ExportController.class);
         var pc = Lookup.getDefault().lookup(ProjectController.class);
         var workspace = pc.getCurrentWorkspace();
+        
         String filename = options.has("file") ? options.get("file").getAsString() : "gephi.pdf";
         File outFile = new File(filename);
         String extension = outFile.getName().replaceAll("^.*\\.","");
@@ -723,8 +802,8 @@ public class GephiStarter {
                 ec.exportFile(outFile);
             } else {
                 var exporter = (GraphExporter) ec.getExporter(extension);
-                exporter.setExportVisible(true);
                 exporter.setWorkspace(workspace);
+                exporter.setExportVisible(true);
                 ec.exportFile(outFile, exporter);
             }
             System.out.println("Exported to "+outFile);
