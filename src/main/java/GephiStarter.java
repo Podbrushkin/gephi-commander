@@ -3,7 +3,10 @@ import java.awt.Font;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.gephi.appearance.api.AppearanceController;
@@ -49,6 +52,7 @@ import org.gephi.layout.plugin.openord.OpenOrdLayoutBuilder;
 import org.gephi.layout.plugin.random.Random;
 import org.gephi.layout.plugin.random.RandomLayout;
 import org.gephi.layout.spi.Layout;
+import org.gephi.layout.spi.LayoutProperty;
 import org.gephi.preview.api.PreviewController;
 import org.gephi.preview.api.PreviewModel;
 import org.gephi.preview.api.PreviewProperty;
@@ -60,6 +64,7 @@ import org.gephi.project.api.ProjectController;
 import org.gephi.project.api.Workspace;
 import org.gephi.statistics.plugin.ConnectedComponents;
 import org.gephi.statistics.plugin.Modularity;
+import org.openide.nodes.Node.Property;
 import org.openide.util.Lookup;
 //https://github.com/KiranGershenfeld/VisualizingTwitchCommunities/blob/AutoAtlasGeneration/AtlasGeneration/Java/App.java
 
@@ -89,7 +94,6 @@ public class GephiStarter {
                     applyStatistics(statsOpts);
                     break;
                 case "filters":
-                    // tryFilters();
                     applyFilters(op.get("values").getAsJsonArray());
                     break;
                 case "layouts":
@@ -120,117 +124,7 @@ public class GephiStarter {
         }
         
     }
-    private static void tryFilters() {
-        var file = new File ("C:\\Users\\user\\AppData\\Local\\Programs\\neo4j-community-5.22.0\\dataMoviesBuiltin\\graphviz.dot");
-
-        //Init a project - and therefore a workspace
-        ProjectController pc = Lookup.getDefault().lookup(ProjectController.class);
-        pc.newProject();
-        Workspace workspace = pc.getCurrentWorkspace();
-
-        //Get models and controllers for this new workspace - will be useful later
-        GraphModel graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
-        PreviewModel model = Lookup.getDefault().lookup(PreviewController.class).getModel();
-        ImportController importController = Lookup.getDefault().lookup(ImportController.class);
-        FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
-        AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
-        AppearanceModel appearanceModel = appearanceController.getModel();
-
-        //Import file       
-        Container container;
-        try {
-            container = importController.importFile(file);
-            container.getLoader().setEdgeDefault(EdgeDirectionDefault.DIRECTED);   //Force DIRECTED
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            return;
-        }
-
-        //Append imported data to GraphAPI
-        importController.process(container, new DefaultProcessor(), workspace);
-
-        //See if graph is well imported
-        DirectedGraph graph = graphModel.getDirectedGraph();
-        System.out.println("Nodes: " + graph.getNodeCount());
-        System.out.println("Edges: " + graph.getEdgeCount());
-        
-        printCounts(graphModel.getDirectedGraph());
-
-
-
-
-
-
-        
-        
-        // FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
-		// DirectedGraph graph = graphModel.getDirectedGraphVisible();
-        
-        System.out.println("Before filtering\nNodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
-
-        // Keep only nodes with group=Person
-        // AppearanceModel appearanceModel = Lookup.getDefault().lookup(AppearanceController.class).getModel();
-        NodePartitionFilter partitionFilter = new NodePartitionFilter(appearanceModel,appearanceModel.getNodePartition(graphModel.getNodeTable().getColumn("group")));
-        partitionFilter.unselectAll();
-        partitionFilter.addPart("Person");
-        Query query2 = filterController.createQuery(partitionFilter);
-        // GraphView view2 = filterController.filter(query2);
-        // graphModel.setVisibleView(view2);    //Set the filter result as the visible view
-        // graph = graphModel.getDirectedGraphVisible();   // Update var to latest
-        System.out.println("After PartitionFilter\nNodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
-        
-        
-        // K-core
-        var filter = new KCoreBuilder.KCoreFilter();
-        filter.filter(graph);
-        filter.setK(1);
-        var query0 = filterController.createQuery(filter);
-        // GraphView view0 = filterController.filter(query0);
-        // graphModel.setVisibleView(view0);
-        System.out.println("After K-Core\nNodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
-
-        filterController.setSubQuery(query0, query2);
-        filterController.filterVisible(query0);
-        System.out.println("After subquery\nNodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
-
-        /* //Combine two filters with AND - Set query and query2 as sub-query of AND
-        IntersectionOperator intersectionOperator = new IntersectionOperator();
-        Query query3 = filterController.createQuery(intersectionOperator);
-        filterController.setSubQuery(query3, query2);
-        filterController.setSubQuery(query3, query0);
-        GraphView view3 = filterController.filter(query3);
-        graphModel.setVisibleView(view3);    //Set the filter result as the visible view */
-
-        try {
-
-            /* ExportController ec = Lookup.getDefault().lookup(ExportController.class);
-            var exporter = (GraphExporter) ec.getExporter("png");
-            exporter.setExportVisible(true);
-            // exporter.setWorkspace(workspace);
-            ec.exportFile(new File("delme.png"), exporter); */
-
-            ExportController ec = Lookup.getDefault().lookup(ExportController.class);
-            ec.exportFile(new File("delme.pdf"));
-        
-        // graph.
-
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-        /* System.out.println("How do we get this graph again?");
-        GraphModel graphModelx = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
-        graphModelx.setVisibleView(view0);
-        printCounts(graphModelx.getDirectedGraphVisible());
-        printCounts(graphModelx.getGraphVisible());
-        printCounts(graphModelx.getGraph(graphModelx.getVisibleView()));
-        printCounts(graphModel.getDirectedGraphVisible());
-        printCounts(graphModel.getGraphVisible());
-        printCounts(graphModel.getGraph(graphModel.getVisibleView()));
-        // var filterControllerx = Lookup.getDefault().lookup(FilterController.class); */
-        
-
-    }
+    
     private static void printCounts(Graph graph) {
         System.out.println("Nodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
     }
@@ -244,8 +138,6 @@ public class GephiStarter {
         pc.newProject();
         Workspace workspace = pc.getCurrentWorkspace();
 
-        //Get models and controllers for this new workspace - will be useful later
-        GraphModel graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         ImportController importController = Lookup.getDefault().lookup(ImportController.class);
         
         //Import file       
@@ -328,35 +220,39 @@ public class GephiStarter {
             // System.out.printf("Now %s has a subquery %s%n",parentQuery.getName(),subQuery.getName());
         }
         // filterController.add(queries.get(0));
-        filterController.filterVisible(queriesReversedOrder.get(0));
+        // filterController.filterVisible(queriesReversedOrder.get(0));
+        var view = filterController.filter(queriesReversedOrder.get(0));
+        var gm = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        gm.setVisibleView(view);
+        System.out.println("COUNTS after filtering!!!");
+        printCounts(gm.getGraphVisible());
+        
+        
     }
     private static void applyLayouts(JsonArray layouts) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         for (var layoutEl : layouts) {
-            var layout = layoutEl.getAsJsonObject();
-            // System.out.println(layout.getAsString());
-            var name = layout.get("name").getAsString();
-            var stepsEl = layout.get("steps");
-            int steps = stepsEl == null ? 200 : stepsEl.getAsInt();
+            var options = layoutEl.getAsJsonObject();
+            var name = options.get("name").getAsString();
 
             switch (name) {
                 case "YifanHu" : {
-                    applyYifanHu(graphModel, layout); break;
+                    applyYifanHu(graphModel, options); break;
                 }
                 case "YifanHuProportional" : {
-                    applyYifanHuProportional(graphModel, steps); break;
+                    applyYifanHuProportional(graphModel, options); break;
                 }
                 case "ForceAtlas2" : {
-                    applyForceAtlas2(graphModel, layout); break;
+                    applyForceAtlas2(graphModel, options); break;
                 }
                 case "OpenOrd" : {
-                    applyOpenOrd(graphModel, layout); break;
+                    applyOpenOrd(graphModel, options); break;
                 }
                 case "RandomLayout" : {
-                    applyRandomLayout(graphModel, layout); break;
+                    applyRandomLayout(graphModel, options); break;
                 }
                 case "Noverlap" : {
-                    applyNoverlapLayout(layout); break;
+                    applyNoverlapLayout(options); break;
                 }
                 default : System.out.println("No such layout: "+name);
     
@@ -476,7 +372,7 @@ public class GephiStarter {
             default:
                 throw new IllegalStateException("Type should be node or edge, not "+type);
         }
-        Class columnType = column.getTypeClass();
+        var columnType = column.getTypeClass();
         /* BiFunction<Class,JsonElement,Object> getValFromJsonEl = (targetType, jsonEl) -> {
             if (Number.class.isAssignableFrom(targetType)) {
                 return jsonEl.getAsNumber();
@@ -559,7 +455,7 @@ public class GephiStarter {
             case "edge" -> graphModel.getEdgeTable().getColumn(columnId);
             default -> {throw new IllegalStateException("Type should be node or edge, not "+nodeOrEdge);}
         };
-        Class columnType = column.getTypeClass();
+        var columnType = column.getTypeClass();
         System.out.println("columnType="+columnType);
         ElementFilter filterResult = null;
         if (Number.class.isAssignableFrom(columnType)) {
@@ -598,28 +494,61 @@ public class GephiStarter {
         var query = filterController.createQuery(filterResult);
         return query;
     }
-    private static void applyForceAtlas2(GraphModel graphModel, JsonObject layoutOptions) {
-        int steps = layoutOptions.has("steps") ? layoutOptions.get("steps").getAsInt() : 200;
-        
+    private static void applyForceAtlas2(GraphModel graphModel, JsonObject options) {
         ForceAtlas2 layout = new ForceAtlas2(null);
         layout.setGraphModel(graphModel);
-        layout.resetPropertiesValues();
-        if (layoutOptions.has("scaling")) {
-            var scaling = layoutOptions.get("scaling").getAsDouble();
-            layout.setScalingRatio(scaling);
-        }
-        
-        runAlgoFor(layout, steps);
+        setLayoutProperties(layout, options);
+        printLayoutProperties(layout);
+        runAlgoFor(layout, options);
         return;
     }
 
-    private static void applyYifanHu(GraphModel graphModel, JsonObject layoutOptions) {
+    private static void applyYifanHu(GraphModel graphModel, JsonObject options) {
         YifanHuLayout layout = new YifanHuLayout(null, new StepDisplacement(1f));
-        
         layout.resetPropertiesValues();
         layout.setGraphModel(graphModel);
-        // layout.setOptimalDistance(100f);
-        
+        setLayoutProperties(layout, options);
+        printLayoutProperties(layout);
+        runAlgoFor(layout, options);
+    }
+
+    private static void applyYifanHuProportional(GraphModel graphModel, JsonObject options) {
+        var layout =  new YifanHuProportional().buildLayout();
+        layout.resetPropertiesValues();
+        layout.setGraphModel(graphModel);
+        setLayoutProperties(layout, options);
+        printLayoutProperties(layout);
+        runAlgoFor(layout, options);
+    }
+    
+    private static void applyOpenOrd(GraphModel graphModel, JsonObject options) {
+        var layout =  new OpenOrdLayoutBuilder().buildLayout();
+        // layout.resetPropertiesValues();
+        layout.setGraphModel(graphModel);
+        setLayoutProperties(layout, options);
+        printLayoutProperties(layout);
+        runAlgoFor(layout, options);
+    }
+    private static void applyRandomLayout(GraphModel graphModel, JsonObject options) {
+        var layout =  new RandomLayout(new Random(), 50);
+        layout.setGraphModel(graphModel);
+        setLayoutProperties(layout, options);
+        printLayoutProperties(layout);
+        runAlgoFor(layout, options);
+    }
+    private static void applyNoverlapLayout(JsonObject options) {
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        // var layout = (NoverlapLayout)(new NoverlapLayoutBuilder().buildLayout());
+        var layout = new NoverlapLayout(new NoverlapLayoutBuilder());
+        layout.setGraphModel(graphModel);
+        layout.resetPropertiesValues();
+        setLayoutProperties(layout, options);
+        printLayoutProperties(layout);
+        runAlgoFor(layout, options);
+    }
+
+    private static void printLayoutProperties(Layout layout) {
+        System.out.println(layout.getClass().getSimpleName()+" properties:");
         for (var prop : layout.getProperties()) {
             try {
                 var name = prop.getProperty().getName();
@@ -627,61 +556,63 @@ public class GephiStarter {
                 System.out.println(name+" = "+value);
             } catch (Exception e) {e.printStackTrace();}
         }
-        if (layoutOptions.has("steps")) {
-            var steps = layoutOptions.get("steps").getAsInt();
-            runAlgoFor(layout,steps);
-        } else {
-            int maxSteps = layoutOptions.has("maxSteps") ? layoutOptions.get("maxSteps").getAsInt() : 600;
-            runAlgoForMaximum(layout, maxSteps);
-        }
-        
     }
 
-    private static void applyYifanHuProportional(GraphModel graphModel, int steps) {
-        var layout =  new YifanHuProportional().buildLayout();
-        layout.resetPropertiesValues();
-        layout.setGraphModel(graphModel);
-        runAlgoFor(layout, steps);
+    private static void setLayoutProperties(Layout layout, JsonObject options) {
+        var supportedPropertyNames = new ArrayList<String>();
+        for (LayoutProperty lProp : layout.getProperties()) {
+            var prop = lProp.getProperty();
+            var name = prop.getName();
+            supportedPropertyNames.add(name);
+            var type = prop.getValueType();
+            if (prop.canWrite() && options.has(name)) {
+                try {
+                    var valueEl = options.get(name);
+                    
+                    switch (type.getSimpleName()) {
+                        case "Integer":
+                            @SuppressWarnings("unchecked")
+                            var propInt = (Property<Integer>) prop;
+                            propInt.setValue(valueEl.getAsInt());
+                            break;
+                        case "Float":
+                            @SuppressWarnings("unchecked")
+                            var propF = (Property<Float>) prop;
+                            propF.setValue(valueEl.getAsFloat());
+                            break;
+                        case "Double":
+                            @SuppressWarnings("unchecked")
+                            var propD = (Property<Double>) prop;
+                            propD.setValue(valueEl.getAsDouble());
+                            break;
+                        case "Boolean":
+                            @SuppressWarnings("unchecked")
+                            var propB = (Property<Boolean>) prop;
+                            propB.setValue(valueEl.getAsBoolean());
+                            break;
+                    
+                        default:
+                            var msg = String.format("Unknown property type: %s, TODO",type);
+                            throw new IllegalStateException(msg);
+                    }
+                } catch (IllegalAccessException|IllegalArgumentException|InvocationTargetException  e) {
+                    System.out.println("ERROR: Failed to set "+prop.getName());
+                    e.printStackTrace();
+                }
+            }
+            //System.out.printf("%s\t%s%n",name,type);
+        }
+        Set<String> predefinedOptionNames = Set.of("name","steps","maxSteps");
+        Set<String> userOpts = options.keySet();
+        var unknownUserOpts = new HashSet<String>(userOpts);
+        unknownUserOpts.removeAll(predefinedOptionNames);
+        unknownUserOpts.removeAll(supportedPropertyNames);
+        if (unknownUserOpts.size() > 0) {
+            var msg = String.format("%s doesn't support these options: %s%n",
+                layout.getClass().getSimpleName(),unknownUserOpts);
+            throw new IllegalStateException(msg);
+        }
     }
-    
-    private static void applyOpenOrd(GraphModel graphModel, JsonObject props) {
-        var layout =  new OpenOrdLayoutBuilder().buildLayout();
-        layout.resetPropertiesValues();
-        layout.setGraphModel(graphModel);
-        if (props.has("steps")) {
-            runAlgoFor(layout, props.get("steps").getAsInt());
-        }
-        else {
-            int maxSteps = props.has("maxSteps") ? props.get("maxSteps").getAsInt() : Integer.MAX_VALUE;
-            runAlgoForMaximum(layout, maxSteps);
-        }
-        
-    }
-    private static void applyRandomLayout(GraphModel graphModel, JsonObject props) {
-        int size = props.has("size") ? props.get("size").getAsInt() : 200;
-        var layout =  new RandomLayout(new Random(), size);
-        layout.setGraphModel(graphModel);
-        // layout.resetPropertiesValues();
-        if (props.has("steps")) {
-            runAlgoFor(layout, props.get("steps").getAsInt());
-        }
-        else {
-            int maxSteps = props.has("maxSteps") ? props.get("maxSteps").getAsInt() : Integer.MAX_VALUE;
-            runAlgoForMaximum(layout, maxSteps);
-        }
-    }
-    private static void applyNoverlapLayout(JsonObject props) {
-        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
-        // var layout = (NoverlapLayout)(new NoverlapLayoutBuilder().buildLayout());
-        var layout = new NoverlapLayout(new NoverlapLayoutBuilder());
-        layout.setGraphModel(graphModel);
-        if (props.has("margin")) {
-            double margin = props.get("margin").getAsDouble();
-            layout.setMargin(margin);
-        }
-        runAlgoForMaximum(layout, 600);
-    }
-
 
     private static void sizeNodesByDegree(JsonObject rankingOptions) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
@@ -734,7 +665,11 @@ public class GephiStarter {
         //Preview
         PreviewModel model = Lookup.getDefault().lookup(PreviewController.class).getModel();
         //Node Label Properties
-        model.getProperties().putValue(PreviewProperty.SHOW_NODE_LABELS, Boolean.TRUE);
+        if (previewOptions.has("showNodeLabels")) {
+            boolean show = previewOptions.get("showNodeLabels").getAsBoolean();
+            model.getProperties().putValue(PreviewProperty.SHOW_NODE_LABELS, show);
+        }
+        
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_PROPORTIONAL_SIZE, Boolean.TRUE);
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_FONT, new Font("Arial", Font.PLAIN, 8));
 
@@ -785,9 +720,16 @@ public class GephiStarter {
         String filename = options.has("file") ? options.get("file").getAsString() : "gephi.pdf";
         File outFile = new File(filename);
         String extension = outFile.getName().replaceAll("^.*\\.","");
+        
         try {
-            
-            if (extension.equals("png") &&
+            var exporter = ec.getExporter(extension);
+            if (exporter instanceof GraphExporter) {
+                GraphExporter graphExporter = (GraphExporter) exporter;
+                graphExporter.setWorkspace(workspace);
+                graphExporter.setExportVisible(true);
+                ec.exportFile(outFile, graphExporter);
+            }
+            else if (extension.equals("png") &&
                 options.has("resolution")) {
                 
                 var res = options.getAsJsonArray("resolution");
@@ -798,13 +740,8 @@ public class GephiStarter {
                 pngExporter.setWidth(x);
                 pngExporter.setHeight(y);
                 ec.exportFile(outFile, pngExporter);
-            } else if (extension.equals("pdf")) {
-                ec.exportFile(outFile);
             } else {
-                var exporter = (GraphExporter) ec.getExporter(extension);
-                exporter.setWorkspace(workspace);
-                exporter.setExportVisible(true);
-                ec.exportFile(outFile, exporter);
+                ec.exportFile(outFile);
             }
             System.out.println("Exported to "+outFile);
             
@@ -831,5 +768,14 @@ public class GephiStarter {
         }
         layout.endAlgo();
         System.out.printf("It was %s steps.%n",stepCount);
+    }
+    private static void runAlgoFor(Layout layout, JsonObject options) {
+        if (options.has("steps")) {
+            runAlgoFor(layout, options.get("steps").getAsInt());
+        }
+        else {
+            int maxSteps = options.has("maxSteps") ? options.get("maxSteps").getAsInt() : Integer.MAX_VALUE;
+            runAlgoForMaximum(layout, maxSteps);
+        }
     }
 }
