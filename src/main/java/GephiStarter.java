@@ -4,8 +4,13 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.InvocationTargetException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -34,6 +39,7 @@ import org.gephi.graph.api.DirectedGraph;
 import org.gephi.graph.api.Graph;
 import org.gephi.graph.api.GraphController;
 import org.gephi.graph.api.GraphModel;
+import org.gephi.graph.api.Node;
 import org.gephi.io.exporter.api.ExportController;
 import org.gephi.io.exporter.preview.PNGExporter;
 import org.gephi.io.exporter.spi.GraphExporter;
@@ -68,6 +74,7 @@ import org.openide.nodes.Node.Property;
 import org.openide.util.Lookup;
 //https://github.com/KiranGershenfeld/VisualizingTwitchCommunities/blob/AutoAtlasGeneration/AtlasGeneration/Java/App.java
 
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -291,11 +298,121 @@ public class GephiStarter {
                         System.out.printf("%s\t%s\t%s%n",col.getId(),col.getTitle(),col.getTypeClass().getSimpleName());
                     }
                     break;
+                case "nodeCoordinates":
+                    var jsonObj = printNodeCoordinates();
+                    System.out.println(jsonObj);
+                    break;
                 default:
                     System.out.println("No such printInfo: "+name);
                     break;
             }
         }
+    }
+
+    private static JsonObject printNodeCoordinates() {
+        System.out.println("Entered printNodeCoordinates()...");
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        var graph = graphModel.getUndirectedGraph();
+
+        var xs = new ArrayList<Float>();
+        var ys = new ArrayList<Float>();
+        for (var node : graph.getNodes()) {
+            xs.add(node.x());
+            ys.add(node.y());
+        }
+
+        Collections.sort(xs);
+        Collections.sort(ys);
+
+        float xMin = xs.get(0);
+        float xMax = xs.get(xs.size()-1);
+        float xMedian = xs.get(xs.size()/2);
+        float xGephiCenterRel = Math.abs(xMin)/(xMax-xMin);
+        float graphWidth = xMax-xMin;
+        // double xMiddle = xs.stream().mapToDouble(Double::valueOf).sum() / xs.size();
+
+
+        float yMin = ys.get(0);
+        float yMax = ys.get(ys.size()-1);
+        float yMedian = ys.get(ys.size()/2);
+        float yGephiCenterRel = Math.abs(yMin)/(yMax-yMin);
+        float graphHeight = yMax-yMin;
+        // double yMiddle = ys.stream().mapToDouble(Double::valueOf).sum() / ys.size();
+
+
+
+        var nodes = new ArrayList<Node>(graph.getNodes().toCollection());
+        Map<String,Comparator<Node>> comparators = Map.of(
+            "fromLeft", Comparator.comparing(Node::x),
+            "fromRight", Comparator.comparing(Node::x).reversed(),
+            "fromTop", Comparator.comparing(Node::y),
+            "fromBottom", Comparator.comparing(Node::y).reversed()
+            );
+        final int thresholdCountNodes = 25;
+        var threshJson = new JsonObject();
+        threshJson.addProperty("threshold", thresholdCountNodes);
+        for (var compEntry : comparators.entrySet()) {
+            nodes.sort(compEntry.getValue());
+            Float thresholdReached = null;
+            if (Set.of("fromLeft","fromRight").contains(compEntry.getKey())) {
+                thresholdReached = nodes.get(thresholdCountNodes-1).x();
+            } else {
+                thresholdReached = nodes.get(thresholdCountNodes-1).y();
+            }
+            // System.out.printf("%s: Threshold of %s nodes reached at %s%n",compEntry.getKey(),thresholdCountNodes,thresholdReached);
+            threshJson.addProperty(compEntry.getKey(), thresholdReached);
+            
+            
+
+            if (compEntry.getKey().equals("fromTop")) {
+                var arr2d = new float[thresholdCountNodes][2];
+                for (int i = 0; i < arr2d.length; i++) {
+                    arr2d[i][0] = nodes.get(i).x();
+                    arr2d[i][1] = nodes.get(i).y();
+                }
+                var jsonEl = new Gson().toJsonTree(arr2d, float[][].class);
+                // threshJson.add("fromTopNodes", jsonEl);
+            }
+        }
+        
+        
+        
+        
+
+
+        
+
+        var drawingHints = new JsonObject();
+        var gephiCenter = new JsonObject();
+        gephiCenter.addProperty("x", xGephiCenterRel);
+        gephiCenter.addProperty("y", 1 - yGephiCenterRel);
+        drawingHints.add("gephiCenter", gephiCenter);
+
+        
+
+        // System.out.printf("X. Min: %f, max: %f, median: %f%n",, ,);
+        // System.out.printf("Y. Min: %f, max: %f, median: %f%n",xs.get(0), xs.get(xs.size()-1),xs.get(xs.size()/2));
+
+        var root = new JsonObject();
+        var xObj = new JsonObject();
+        xObj.addProperty("min", xMin);
+        xObj.addProperty("max", xMax);
+        xObj.addProperty("median", xMedian);
+        xObj.addProperty("gephiCenterRel", xGephiCenterRel);
+        // xObj.addProperty("middle", xMiddle);
+        root.add("x", xObj);
+        var yObj = new JsonObject();
+        yObj.addProperty("min", yMin);
+        yObj.addProperty("max", yMax);
+        yObj.addProperty("median", yMedian);
+        yObj.addProperty("gephiCenterRel", yGephiCenterRel);
+        
+        // yObj.addProperty("middle", yMiddle);
+        root.add("y", yObj);
+        root.add("threshold", threshJson);
+        root.add("drawingHints", drawingHints);
+        return root;
+        // System.out.println(new Gson().toJson(root));
     }
 
     private static Query getFilterGiantComponent() {
@@ -499,8 +616,11 @@ public class GephiStarter {
         layout.setGraphModel(graphModel);
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
-        runAlgoFor(layout, options);
-        return;
+        if (options.has("export")) {
+            runAlgoWithExporting(layout,options);
+        } else {
+            runAlgoFor(layout, options);
+        }
     }
 
     private static void applyYifanHu(GraphModel graphModel, JsonObject options) {
@@ -523,7 +643,7 @@ public class GephiStarter {
     
     private static void applyOpenOrd(GraphModel graphModel, JsonObject options) {
         var layout =  new OpenOrdLayoutBuilder().buildLayout();
-        // layout.resetPropertiesValues();
+        layout.resetPropertiesValues();
         layout.setGraphModel(graphModel);
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
@@ -602,7 +722,7 @@ public class GephiStarter {
             }
             //System.out.printf("%s\t%s%n",name,type);
         }
-        Set<String> predefinedOptionNames = Set.of("name","steps","maxSteps");
+        Set<String> predefinedOptionNames = Set.of("name","steps","maxSteps","export","exportEach");
         Set<String> userOpts = options.keySet();
         var unknownUserOpts = new HashSet<String>(userOpts);
         unknownUserOpts.removeAll(predefinedOptionNames);
@@ -713,11 +833,21 @@ public class GephiStarter {
         }
     }
     private static void export(JsonObject options) {
+        System.out.print("Exporting...");
         ExportController ec = Lookup.getDefault().lookup(ExportController.class);
         var pc = Lookup.getDefault().lookup(ProjectController.class);
         var workspace = pc.getCurrentWorkspace();
         
         String filename = options.has("file") ? options.get("file").getAsString() : "gephi.pdf";
+        if (options.has("timestamp") && options.get("timestamp").getAsBoolean()) {
+            var now = LocalDateTime.now();
+            var formatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssSSS");
+            String ts = now.format(formatter);
+
+            String extension = filename.substring(filename.lastIndexOf("."));
+            String filenameWithoutExtension = filename.substring(0, filename.lastIndexOf("."));
+            filename = filenameWithoutExtension + ts + extension;
+        }
         File outFile = new File(filename);
         String extension = outFile.getName().replaceAll("^.*\\.","");
         
@@ -726,7 +856,12 @@ public class GephiStarter {
             if (exporter instanceof GraphExporter) {
                 GraphExporter graphExporter = (GraphExporter) exporter;
                 graphExporter.setWorkspace(workspace);
-                graphExporter.setExportVisible(true);
+                if (options.has("exportVisible")) {
+                    graphExporter.setExportVisible(options.get("exportVisible").getAsBoolean());
+                } else {
+                    graphExporter.setExportVisible(true);
+                }
+                
                 ec.exportFile(outFile, graphExporter);
             }
             else if (extension.equals("png") &&
@@ -739,6 +874,7 @@ public class GephiStarter {
                 pngExporter.setWorkspace(workspace);
                 pngExporter.setWidth(x);
                 pngExporter.setHeight(y);
+                pngExporter.setMargin(0);
                 ec.exportFile(outFile, pngExporter);
             } else {
                 ec.exportFile(outFile);
@@ -752,12 +888,13 @@ public class GephiStarter {
     }
 
     private static void runAlgoFor(Layout layout, int steps) {
-        System.out.printf("Applying layout %s with %s steps %n",layout.getClass().getSimpleName(), steps); 
+        System.out.printf("Applying layout %s with %s steps... ",layout.getClass().getSimpleName(), steps); 
         layout.initAlgo();
         for (int k = 0; k < steps; k++) {
             layout.goAlgo();
         }
         layout.endAlgo();
+        System.out.println("Done.");
     }
     private static void runAlgoForMaximum(Layout layout, int maxSteps) {
         System.out.printf("Applying layout %s with no more than %s steps...%n",layout.getClass().getSimpleName(), maxSteps); 
@@ -777,5 +914,23 @@ public class GephiStarter {
             int maxSteps = options.has("maxSteps") ? options.get("maxSteps").getAsInt() : Integer.MAX_VALUE;
             runAlgoForMaximum(layout, maxSteps);
         }
+    }
+    private static void runAlgoWithExporting(Layout layout, JsonObject layoutOptions) {
+        String layoutName = layout.getClass().getSimpleName();
+        var exportOptions = layoutOptions.get("export").getAsJsonObject();
+        int each = layoutOptions.get("exportEach").getAsInt();
+        int steps = layoutOptions.get("steps").getAsInt();
+
+        System.out.printf("Applying layout %s with %s steps...%n", layoutName, steps);
+        layout.initAlgo();
+        //export(exportOptions);
+        for (int k = 1; k <= steps; k++) {
+            layout.goAlgo();
+            if (k % each == 0 || k == steps) {
+                export(exportOptions);
+            }
+        }
+        layout.endAlgo();
+        System.out.println("Applying "+ layoutName + " is finished.");
     }
 }
