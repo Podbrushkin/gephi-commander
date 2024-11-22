@@ -1,5 +1,7 @@
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.geom.Rectangle2D;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -10,10 +12,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import javax.imageio.ImageIO;
+
+import org.apache.xmlgraphics.image.loader.Image;
 import org.gephi.appearance.api.AppearanceController;
 import org.gephi.appearance.api.AppearanceModel;
 import org.gephi.appearance.api.Function;
@@ -41,7 +45,9 @@ import org.gephi.graph.api.GraphController;
 import org.gephi.graph.api.GraphModel;
 import org.gephi.graph.api.Node;
 import org.gephi.io.exporter.api.ExportController;
+import org.gephi.io.exporter.plugin.ExporterGEXF;
 import org.gephi.io.exporter.preview.PNGExporter;
+import org.gephi.io.exporter.spi.Exporter;
 import org.gephi.io.exporter.spi.GraphExporter;
 import org.gephi.io.importer.api.Container;
 import org.gephi.io.importer.api.EdgeDirectionDefault;
@@ -59,9 +65,11 @@ import org.gephi.layout.plugin.random.Random;
 import org.gephi.layout.plugin.random.RandomLayout;
 import org.gephi.layout.spi.Layout;
 import org.gephi.layout.spi.LayoutProperty;
+import org.gephi.preview.api.G2DTarget;
 import org.gephi.preview.api.PreviewController;
 import org.gephi.preview.api.PreviewModel;
 import org.gephi.preview.api.PreviewProperty;
+import org.gephi.preview.api.RenderTarget;
 import org.gephi.preview.types.DependantColor;
 import org.gephi.preview.types.DependantOriginalColor;
 import org.gephi.preview.types.EdgeColor;
@@ -70,17 +78,16 @@ import org.gephi.project.api.ProjectController;
 import org.gephi.project.api.Workspace;
 import org.gephi.statistics.plugin.ConnectedComponents;
 import org.gephi.statistics.plugin.Modularity;
+import org.gephi.utils.longtask.spi.LongTask;
+import org.gephi.utils.progress.Progress;
 import org.openide.nodes.Node.Property;
 import org.openide.util.Lookup;
 //https://github.com/KiranGershenfeld/VisualizingTwitchCommunities/blob/AutoAtlasGeneration/AtlasGeneration/Java/App.java
 
-import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
-//https://github.com/gephi/gephi-toolkit-demos/tree/master/src/main/java/org/gephi/toolkit/demos
 public class GephiStarter {
     
     public static void main(String[] args) {
@@ -339,54 +346,86 @@ public class GephiStarter {
         float graphHeight = yMax-yMin;
         // double yMiddle = ys.stream().mapToDouble(Double::valueOf).sum() / ys.size();
 
-
+        var graphBounds = new Rectangle2D.Float(xMin,yMin,graphWidth,graphHeight);
+        
+        System.out.println(graphBounds);
 
         var nodes = new ArrayList<Node>(graph.getNodes().toCollection());
-        Map<String,Comparator<Node>> comparators = Map.of(
-            "fromLeft", Comparator.comparing(Node::x),
-            "fromRight", Comparator.comparing(Node::x).reversed(),
-            "fromTop", Comparator.comparing(Node::y),
-            "fromBottom", Comparator.comparing(Node::y).reversed()
-            );
+        
+        var fromLeftComp = Comparator.comparing(Node::x);
+        var fromRightComp = Comparator.comparing(Node::x).reversed();
+        var fromTopComp = Comparator.comparing(Node::y);
+        var fromBottomComp = Comparator.comparing(Node::y).reversed();
+
         final int thresholdCountNodes = 25;
+        
+        
+        //TODO: handle if threshold > nodes.size
+        nodes.sort(fromLeftComp);
+        Float fromLeftReachedAt = nodes.get(thresholdCountNodes-1).x();
+        
+        
+        nodes.sort(fromRightComp);
+        Float fromRightReachedAt = nodes.get(thresholdCountNodes-1).x();
+        
+
+        nodes.sort(fromTopComp);
+        Float fromTopReachedAt = nodes.get(thresholdCountNodes-1).y();
+        
+
+        nodes.sort(fromBottomComp);
+        Float fromBottomReachedAt = nodes.get(thresholdCountNodes-1).y();
+
+
+        var threshRect = new Rectangle2D.Float(
+            fromLeftReachedAt,
+            fromTopReachedAt,
+            fromRightReachedAt-fromLeftReachedAt,
+            fromBottomReachedAt-fromTopReachedAt);
+        // System.out.println(" "+getRelCoords(graphBounds, threshRect)); ;
         var threshJson = new JsonObject();
         threshJson.addProperty("threshold", thresholdCountNodes);
-        for (var compEntry : comparators.entrySet()) {
-            nodes.sort(compEntry.getValue());
-            Float thresholdReached = null;
-            if (Set.of("fromLeft","fromRight").contains(compEntry.getKey())) {
-                thresholdReached = nodes.get(thresholdCountNodes-1).x();
-            } else {
-                thresholdReached = nodes.get(thresholdCountNodes-1).y();
-            }
-            // System.out.printf("%s: Threshold of %s nodes reached at %s%n",compEntry.getKey(),thresholdCountNodes,thresholdReached);
-            threshJson.addProperty(compEntry.getKey(), thresholdReached);
-            
-            
-
-            if (compEntry.getKey().equals("fromTop")) {
-                var arr2d = new float[thresholdCountNodes][2];
-                for (int i = 0; i < arr2d.length; i++) {
-                    arr2d[i][0] = nodes.get(i).x();
-                    arr2d[i][1] = nodes.get(i).y();
-                }
-                var jsonEl = new Gson().toJsonTree(arr2d, float[][].class);
-                // threshJson.add("fromTopNodes", jsonEl);
-            }
-        }
+        threshJson.add("relative", getRelativeCoords(graphBounds, threshRect, true));
         
-        
-        
-        
+        threshJson.addProperty("fromLeft", fromLeftReachedAt);
+        threshJson.addProperty("fromRight", fromRightReachedAt);
+        threshJson.addProperty("fromTop", fromTopReachedAt);
+        threshJson.addProperty("fromBottom", fromBottomReachedAt);
 
 
+        var fromLeftRel = (fromLeftReachedAt-xMin)/graphWidth;
+        threshJson.addProperty("fromLeftRel", fromLeftRel);
+        var fromRightRel = (fromLeftReachedAt-xMin)/graphWidth;
+        threshJson.addProperty("fromRight", fromRightReachedAt);
+        threshJson.addProperty("fromTop", fromTopReachedAt);
+        threshJson.addProperty("fromBottom", fromBottomReachedAt);
         
-
         var drawingHints = new JsonObject();
         var gephiCenter = new JsonObject();
         gephiCenter.addProperty("x", xGephiCenterRel);
         gephiCenter.addProperty("y", 1 - yGephiCenterRel);
         drawingHints.add("gephiCenter", gephiCenter);
+        // drawingHints.add
+
+        /* if (compEntry.getKey().equals("fromTop")) {
+            var arr2d = new float[thresholdCountNodes][2];
+            for (int i = 0; i < arr2d.length; i++) {
+                arr2d[i][0] = nodes.get(i).x();
+                arr2d[i][1] = nodes.get(i).y();
+            }
+            var jsonEl = new Gson().toJsonTree(arr2d, float[][].class);
+            // threshJson.add("fromTopNodes", jsonEl);
+        } */
+        
+        
+        
+        
+        
+
+
+        
+
+        
 
         
 
@@ -413,6 +452,33 @@ public class GephiStarter {
         root.add("drawingHints", drawingHints);
         return root;
         // System.out.println(new Gson().toJson(root));
+    }
+
+    private static JsonObject getRelativeCoords(Rectangle2D outerRect, Rectangle2D innerRect, boolean mirrorVertically) {
+        // Example outer rectangle
+        // Rectangle2D.Float outerRect = new Rectangle2D.Float(100, 100, 300, 200);
+        // Example inner rectangle
+        // Rectangle2D.Float innerRect = new Rectangle2D.Float(150, 150, 100, 50);
+    
+        // Calculate the relative coordinates
+        double topRel = (innerRect.getY() - outerRect.getY()) / outerRect.getHeight();
+        double leftRel = (innerRect.getX() - outerRect.getX()) / outerRect.getWidth();
+        double rightRel = (outerRect.getX() + outerRect.getWidth() - (innerRect.getX() + innerRect.getWidth())) / outerRect.getWidth();
+        double bottomRel = (outerRect.getY() + outerRect.getHeight() - (innerRect.getY() + innerRect.getHeight())) / outerRect.getHeight();
+    
+        // Print the results
+        var result = new JsonObject();
+ 
+        result.addProperty("leftRel", leftRel);
+        result.addProperty("rightRel", rightRel);
+        if (!mirrorVertically) {
+            result.addProperty("topRel", topRel);
+            result.addProperty("bottomRel", bottomRel);
+        } else {
+            result.addProperty("topRel", bottomRel);
+            result.addProperty("bottomRel", topRel);
+        }
+        return result;
     }
 
     private static Query getFilterGiantComponent() {
@@ -853,6 +919,10 @@ public class GephiStarter {
         
         try {
             var exporter = ec.getExporter(extension);
+            /* if (exporter instanceof ExporterGEXF) {
+                ExporterGEXF graphExporter = (ExporterGEXF) exporter;
+                graphExporter.
+            } */
             if (exporter instanceof GraphExporter) {
                 GraphExporter graphExporter = (GraphExporter) exporter;
                 graphExporter.setWorkspace(workspace);
@@ -861,10 +931,9 @@ public class GephiStarter {
                 } else {
                     graphExporter.setExportVisible(true);
                 }
-                
                 ec.exportFile(outFile, graphExporter);
-            }
-            else if (extension.equals("png") &&
+
+            } else if (extension.equals("png") &&
                 options.has("resolution")) {
                 
                 var res = options.getAsJsonArray("resolution");
