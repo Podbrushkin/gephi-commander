@@ -1,10 +1,13 @@
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Image;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -17,7 +20,6 @@ import java.util.stream.Collectors;
 
 import javax.imageio.ImageIO;
 
-import org.apache.xmlgraphics.image.loader.Image;
 import org.gephi.appearance.api.AppearanceController;
 import org.gephi.appearance.api.AppearanceModel;
 import org.gephi.appearance.api.Function;
@@ -45,10 +47,10 @@ import org.gephi.graph.api.GraphController;
 import org.gephi.graph.api.GraphModel;
 import org.gephi.graph.api.Node;
 import org.gephi.io.exporter.api.ExportController;
-import org.gephi.io.exporter.plugin.ExporterGEXF;
 import org.gephi.io.exporter.preview.PNGExporter;
-import org.gephi.io.exporter.spi.Exporter;
+import org.gephi.io.exporter.spi.ByteExporter;
 import org.gephi.io.exporter.spi.GraphExporter;
+import org.gephi.io.exporter.spi.VectorExporter;
 import org.gephi.io.importer.api.Container;
 import org.gephi.io.importer.api.EdgeDirectionDefault;
 import org.gephi.io.importer.api.ImportController;
@@ -68,6 +70,7 @@ import org.gephi.layout.spi.LayoutProperty;
 import org.gephi.preview.api.G2DTarget;
 import org.gephi.preview.api.PreviewController;
 import org.gephi.preview.api.PreviewModel;
+import org.gephi.preview.api.PreviewProperties;
 import org.gephi.preview.api.PreviewProperty;
 import org.gephi.preview.api.RenderTarget;
 import org.gephi.preview.types.DependantColor;
@@ -80,6 +83,7 @@ import org.gephi.statistics.plugin.ConnectedComponents;
 import org.gephi.statistics.plugin.Modularity;
 import org.gephi.utils.longtask.spi.LongTask;
 import org.gephi.utils.progress.Progress;
+import org.gephi.utils.progress.ProgressTicket;
 import org.openide.nodes.Node.Property;
 import org.openide.util.Lookup;
 //https://github.com/KiranGershenfeld/VisualizingTwitchCommunities/blob/AutoAtlasGeneration/AtlasGeneration/Java/App.java
@@ -939,7 +943,15 @@ public class GephiStarter {
                 var res = options.getAsJsonArray("resolution");
                 int x = res.get(0).getAsInt();
                 int y = res.size() == 2 ? res.get(1).getAsInt() : x;
-                var pngExporter = new PNGExporter();
+
+
+                PNGExporter pngExporter = null;
+                if (options.has("PNGExporter")) {
+                    pngExporter = new MyPNGExporter(options.get("PNGExporter").getAsJsonObject());
+                } else {
+                    pngExporter = new PNGExporter();
+                }
+                
                 pngExporter.setWorkspace(workspace);
                 pngExporter.setWidth(x);
                 pngExporter.setHeight(y);
@@ -1003,3 +1015,218 @@ public class GephiStarter {
         System.out.println("Applying "+ layoutName + " is finished.");
     }
 }
+
+
+
+
+
+class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter, LongTask {
+
+    private JsonObject options = new JsonObject();
+    private Float scalingStart = null;
+    private Float scalingStep = null;
+    private static int scalingIter = 0;
+
+    private ProgressTicket progress;
+    private boolean cancel = false;
+    private Workspace workspace;
+    private OutputStream stream;
+    private int width = 1024;
+    private int height = 1024;
+    private boolean transparentBackground = false;
+    private int margin = 4;
+    private G2DTarget target;
+    private Color oldColor;
+
+    public MyPNGExporter(){}
+    public MyPNGExporter(JsonObject options) {
+        super();
+        this.options = options;
+        if (options.has("scalingStart")) {
+            scalingStart = options.get("scalingStart").getAsFloat();
+            scalingStep = options.get("scalingStep").getAsFloat();
+        }
+    }
+
+    @Override
+    public boolean execute() {
+        Progress.start(progress);
+
+        PreviewController ctrl
+            = Lookup.getDefault().lookup(PreviewController.class);
+        PreviewModel m = ctrl.getModel(workspace);
+
+        setExportProperties(m);
+        ctrl.refreshPreview(workspace);
+
+        target = (G2DTarget) ctrl.getRenderTarget(
+            RenderTarget.G2D_TARGET,
+            workspace);
+        if (target instanceof LongTask) {
+            ((LongTask) target).setProgressTicket(progress);
+        }
+
+        try {
+            target.refresh();
+            // var origTranslateX = target.getTranslate().getX();
+            // var origTranslateY = target.getTranslate().getY();
+            
+            // var scaling = target.getScaling();
+            // target.setScaling(0.5f);
+            // target.getTranslate().set(0, 0);
+            if (scalingStart != null && scalingStep != null) {
+                var newScaling = scalingStart+(scalingStep*scalingIter++);
+                System.out.println("Dynamic scaling:"+newScaling);
+                target.setScaling(newScaling);
+            }
+            else if (options.has("scaling")) {
+                target.setScaling(options.get("scaling").getAsFloat());
+            }
+            if (options.has("translate")) {
+                var transObj = options.get("translate").getAsJsonObject();
+                target.getTranslate().set(transObj.get("x").getAsFloat(),transObj.get("y").getAsFloat());
+            }
+            target.refresh();
+            System.out.printf("target.getHeight()=%s,%ntarget.getScaling()=%s,%ntarget.getTranslate()=%s%n",
+                target.getHeight(),target.getScaling(),target.getTranslate()); 
+
+            Progress.switchToIndeterminate(progress);
+
+            Image sourceImg = target.getImage();
+            
+            Graphics srcGraphics = sourceImg.getGraphics();
+            System.out.println(srcGraphics.getClipBounds());
+            
+            System.out.println("sourceImg.getWidth="+sourceImg.getWidth(null));
+
+            // new Frame().add(srcGraphics);
+
+            // this line is always diagonal of result image regardless of margin
+            /* srcGraphics.setColor(Color.GREEN);
+            srcGraphics.drawLine(0, 0, width, height);
+
+            // vertical central line
+            srcGraphics.drawLine(width/2, 0, width/2, height);
+
+            // horizontal central line
+            srcGraphics.setColor(Color.BLUE);
+            srcGraphics.drawLine(0, height/2, width, height/2);
+
+            
+            srcGraphics.drawLine(0, 0, (int)origTranslateX, (int)origTranslateY);
+            srcGraphics.fillRect((int)origTranslateX,(int)origTranslateY,10,10);
+            var newFont = srcGraphics.getFont().deriveFont(32.0f);
+            srcGraphics.setFont(newFont);
+            srcGraphics.drawString("%.0f,%.0f".formatted(origTranslateX,origTranslateY),
+                (int)origTranslateX,(int)origTranslateY); */
+
+            //
+            // srcGraphics
+
+            // draw text
+            
+            // srcGraphics.setColor(Color.GREEN);
+            
+            // srcGraphics.clipRect
+            // srcGraphics.setClip(width/2, height/2, width/4, height/4);
+            
+            
+            BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            img.getGraphics().drawImage(sourceImg, 0, 0, null);
+            ImageIO.write(img, "png", stream);
+            stream.close();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        discardExportProperties(m);
+
+        Progress.finish(progress);
+
+        return !cancel;
+    }
+
+    public int getHeight() {
+        return height;
+    }
+
+    public void setHeight(int height) {
+        this.height = height;
+    }
+
+    public int getWidth() {
+        return width;
+    }
+
+    public void setWidth(int width) {
+        this.width = width;
+    }
+
+    public int getMargin() {
+        return margin;
+    }
+
+    public void setMargin(int margin) {
+        this.margin = margin;
+    }
+
+    public boolean isTransparentBackground() {
+        return transparentBackground;
+    }
+
+    public void setTransparentBackground(boolean transparentBackground) {
+        this.transparentBackground = transparentBackground;
+    }
+
+    @Override
+    public Workspace getWorkspace() {
+        return workspace;
+    }
+
+    @Override
+    public void setWorkspace(Workspace workspace) {
+        this.workspace = workspace;
+    }
+
+    @Override
+    public void setOutputStream(OutputStream stream) {
+        this.stream = stream;
+    }
+
+    @Override
+    public boolean cancel() {
+        cancel = true;
+        if (target instanceof LongTask) {
+            ((LongTask) target).cancel();
+        }
+        return true;
+    }
+
+    @Override
+    public void setProgressTicket(ProgressTicket progressTicket) {
+        this.progress = progressTicket;
+    }
+
+    private synchronized void setExportProperties(PreviewModel m) {
+        PreviewProperties props = m.getProperties();
+        props.putValue(PreviewProperty.VISIBILITY_RATIO, 1.0F);
+        props.putValue("width", width);
+        props.putValue("height", height);
+        oldColor = props.getColorValue(PreviewProperty.BACKGROUND_COLOR);
+        if (transparentBackground) {
+            props.putValue(
+                PreviewProperty.BACKGROUND_COLOR,
+                null); //Transparent
+        }
+        props.putValue(PreviewProperty.MARGIN, new Float(margin));
+    }
+
+    private synchronized void discardExportProperties(PreviewModel m) {
+        PreviewProperties props = m.getProperties();
+        props.removeSimpleValue("width");
+        props.removeSimpleValue("height");
+        props.removeSimpleValue(PreviewProperty.MARGIN);
+        props.putValue(PreviewProperty.BACKGROUND_COLOR, oldColor);
+    }
+}
+
