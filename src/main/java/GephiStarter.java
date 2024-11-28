@@ -655,10 +655,15 @@ public class GephiStarter {
         
         var filterController = Lookup.getDefault().lookup(FilterController.class);
         
-        Column column = switch (nodeOrEdge) {
-            case "node" -> graphModel.getNodeTable().getColumn(columnId);
-            case "edge" -> graphModel.getEdgeTable().getColumn(columnId);
-            default -> {throw new IllegalStateException("Type should be node or edge, not "+nodeOrEdge);}
+        Column column = null;
+        switch (nodeOrEdge) {
+            case "node" : 
+                column = graphModel.getNodeTable().getColumn(columnId);
+                break;
+            case "edge" : 
+                column = graphModel.getEdgeTable().getColumn(columnId);
+                break;
+            default : {throw new IllegalStateException("Type should be node or edge, not "+nodeOrEdge);}
         };
         var columnType = column.getTypeClass();
         System.out.println("columnType="+columnType);
@@ -686,10 +691,15 @@ public class GephiStarter {
         }
         else if (String.class.isAssignableFrom(columnType)) {
             System.out.println("Its string");
-            var filter = switch (nodeOrEdge) {
-                case "node" -> new AttributeEqualBuilder.EqualStringFilter.Node(column);
-                case "edge" -> new AttributeEqualBuilder.EqualStringFilter.Edge(column);
-                default -> {throw new IllegalStateException("Type should be node or edge, not "+nodeOrEdge);}
+            AttributeEqualBuilder.EqualStringFilter<?> filter = null;
+            switch (nodeOrEdge) {
+                case "node" : 
+                    filter = new AttributeEqualBuilder.EqualStringFilter.Node(column);
+                    break;
+                case "edge" : 
+                    filter =  new AttributeEqualBuilder.EqualStringFilter.Edge(column);
+                    break;
+                default : {throw new IllegalStateException("Type should be node or edge, not "+nodeOrEdge);}
             };
             filter.setUseRegex(false);
             filter.setPattern(value.getAsString());
