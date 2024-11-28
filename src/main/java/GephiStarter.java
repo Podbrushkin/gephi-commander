@@ -12,9 +12,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -53,6 +55,7 @@ import org.gephi.io.exporter.spi.GraphExporter;
 import org.gephi.io.exporter.spi.VectorExporter;
 import org.gephi.io.importer.api.Container;
 import org.gephi.io.importer.api.EdgeDirectionDefault;
+import org.gephi.io.importer.api.EdgeMergeStrategy;
 import org.gephi.io.importer.api.ImportController;
 import org.gephi.io.importer.api.ImportUtils;
 import org.gephi.io.processor.plugin.DefaultProcessor;
@@ -60,6 +63,7 @@ import org.gephi.layout.plugin.force.StepDisplacement;
 import org.gephi.layout.plugin.force.yifanHu.YifanHuLayout;
 import org.gephi.layout.plugin.force.yifanHu.YifanHuProportional;
 import org.gephi.layout.plugin.forceAtlas2.ForceAtlas2;
+import org.gephi.layout.plugin.fruchterman.FruchtermanReingoldBuilder;
 import org.gephi.layout.plugin.noverlap.NoverlapLayout;
 import org.gephi.layout.plugin.noverlap.NoverlapLayoutBuilder;
 import org.gephi.layout.plugin.openord.OpenOrdLayoutBuilder;
@@ -96,6 +100,7 @@ public class GephiStarter {
     
     public static void main(String[] args) {
         var options = JsonParser.parseReader(new InputStreamReader(System.in)).getAsJsonArray();
+        Locale.setDefault(Locale.ENGLISH);  // Ignore Gephi localization
         // System.out.println(options.toString());
         // System.out.println(options.keySet());
         
@@ -164,6 +169,8 @@ public class GephiStarter {
             container = importController.importFile(file);
             container.getLoader().setEdgeDefault(EdgeDirectionDefault.DIRECTED);   //Force DIRECTED
             container.getLoader().setAllowParallelEdge(true);
+            container.getLoader().setEdgesMergeStrategy(EdgeMergeStrategy.NO_MERGE);
+            container.getLoader().setAutoScale(false);
         } catch (Exception ex) {
             ex.printStackTrace();
             return;
@@ -272,6 +279,9 @@ public class GephiStarter {
                 case "Noverlap" : {
                     applyNoverlapLayout(options); break;
                 }
+                case "FruchtermanReingold" : {
+                    applyFruchtermanReingoldLayout(options); break;
+                }
                 default : System.out.println("No such layout: "+name);
     
             }
@@ -296,6 +306,9 @@ public class GephiStarter {
                     System.out.println("Nodes: " + graphVis.getNodeCount() + " Edges: " + graphVis.getEdgeCount());
                     break;
                 case "nodeColumns":
+                    // var attrs = graphModel.getGraphVisible().getNodes().iterator().next().getAttributes();
+
+                    // System.out.println(Arrays.toString(attrs));
                     System.out.println("Node columns:");
                     System.out.println("id\ttitle\ttype");
                     for (var col : graphModel.getNodeTable()) {
@@ -324,7 +337,7 @@ public class GephiStarter {
         System.out.println("Entered printNodeCoordinates()...");
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         var graph = graphModel.getUndirectedGraph();
-
+        
         var xs = new ArrayList<Float>();
         var ys = new ArrayList<Float>();
         for (var node : graph.getNodes()) {
@@ -547,6 +560,7 @@ public class GephiStarter {
         // printPartitionInfo(nodePartition);
         PartitionBuilder.PartitionFilter filter = null;
         Column column = null;
+        try {
         switch (type.toLowerCase()) {
             case "node":
                 column = graphModel.getNodeTable().getColumn(columnId);
@@ -558,6 +572,10 @@ public class GephiStarter {
                 break;
             default:
                 throw new IllegalStateException("Type should be node or edge, not "+type);
+        }
+        } catch (Exception e) {
+            throw e;
+            // e.
         }
         var columnType = column.getTypeClass();
         /* BiFunction<Class,JsonElement,Object> getValFromJsonEl = (targetType, jsonEl) -> {
@@ -699,7 +717,11 @@ public class GephiStarter {
         layout.setGraphModel(graphModel);
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
-        runAlgoFor(layout, options);
+        if (options.has("export")) {
+            runAlgoWithExporting(layout,options);
+        } else {
+            runAlgoFor(layout, options);
+        }
     }
 
     private static void applyYifanHuProportional(GraphModel graphModel, JsonObject options) {
@@ -708,7 +730,11 @@ public class GephiStarter {
         layout.setGraphModel(graphModel);
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
-        runAlgoFor(layout, options);
+        if (options.has("export")) {
+            runAlgoWithExporting(layout,options);
+        } else {
+            runAlgoFor(layout, options);
+        }
     }
     
     private static void applyOpenOrd(GraphModel graphModel, JsonObject options) {
@@ -737,6 +763,21 @@ public class GephiStarter {
         runAlgoFor(layout, options);
     }
 
+    private static void applyFruchtermanReingoldLayout(JsonObject options) {
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        // var layout = (NoverlapLayout)(new NoverlapLayoutBuilder().buildLayout());
+        var layout = new FruchtermanReingoldBuilder().buildLayout();
+        layout.setGraphModel(graphModel);
+        layout.resetPropertiesValues();
+        setLayoutProperties(layout, options);
+        printLayoutProperties(layout);
+        if (options.has("export")) {
+            runAlgoWithExporting(layout,options);
+        } else {
+            runAlgoFor(layout, options);
+        }
+    }
+
     private static void printLayoutProperties(Layout layout) {
         System.out.println(layout.getClass().getSimpleName()+" properties:");
         for (var prop : layout.getProperties()) {
@@ -753,6 +794,10 @@ public class GephiStarter {
         for (LayoutProperty lProp : layout.getProperties()) {
             var prop = lProp.getProperty();
             var name = prop.getName();
+            // System.out.println(prop.attributeNames());
+            // System.out.println(lProp.getCategory());
+            // System.out.println(lProp.getCanonicalName());
+            
             supportedPropertyNames.add(name);
             var type = prop.getValueType();
             if (prop.canWrite() && options.has(name)) {
@@ -798,8 +843,8 @@ public class GephiStarter {
         unknownUserOpts.removeAll(predefinedOptionNames);
         unknownUserOpts.removeAll(supportedPropertyNames);
         if (unknownUserOpts.size() > 0) {
-            var msg = String.format("%s doesn't support these options: %s%n",
-                layout.getClass().getSimpleName(),unknownUserOpts);
+            var msg = String.format("%s doesn't support these options: %s. These are supported: %s%n",
+                layout.getClass().getSimpleName(),unknownUserOpts,supportedPropertyNames);
             throw new IllegalStateException(msg);
         }
     }
@@ -868,7 +913,7 @@ public class GephiStarter {
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_SIZE, 4.0f);
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_OPACITY, 40);
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_COLOR, new DependantColor(Color.BLACK));
-        
+        model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT, Boolean.TRUE);
         //Edge Properties
         model.getProperties().putValue(PreviewProperty.SHOW_EDGES, Boolean.TRUE);
         
@@ -903,7 +948,7 @@ public class GephiStarter {
         }
     }
     private static void export(JsonObject options) {
-        System.out.print("Exporting...");
+        System.out.println("Exporting...");
         ExportController ec = Lookup.getDefault().lookup(ExportController.class);
         var pc = Lookup.getDefault().lookup(ProjectController.class);
         var workspace = pc.getCurrentWorkspace();
@@ -949,7 +994,7 @@ public class GephiStarter {
                 if (options.has("PNGExporter")) {
                     pngExporter = new MyPNGExporter(options.get("PNGExporter").getAsJsonObject());
                 } else {
-                    pngExporter = new PNGExporter();
+                    pngExporter = new MyPNGExporter();
                 }
                 
                 pngExporter.setWorkspace(workspace);
@@ -1087,8 +1132,15 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
                 target.getTranslate().set(transObj.get("x").getAsFloat(),transObj.get("y").getAsFloat());
             }
             target.refresh();
-            System.out.printf("target.getHeight()=%s,%ntarget.getScaling()=%s,%ntarget.getTranslate()=%s%n",
-                target.getHeight(),target.getScaling(),target.getTranslate()); 
+            // System.out.printf("target.getHeight()=%s,%ntarget.getScaling()=%s,%ntarget.getTranslate()=%s%n",
+            //     target.getHeight(),target.getScaling(),target.getTranslate()); 
+
+            // print useful info
+            var info = new JsonObject();
+            info.addProperty("scaling", target.getScaling());
+            info.addProperty("translateX", target.getTranslate().getX());
+            info.addProperty("translateY", target.getTranslate().getY());
+            System.out.println(info);
 
             Progress.switchToIndeterminate(progress);
 
