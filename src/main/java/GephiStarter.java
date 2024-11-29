@@ -12,15 +12,17 @@ import java.lang.reflect.InvocationTargetException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import javax.imageio.ImageIO;
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
 
 import org.gephi.appearance.api.AppearanceController;
 import org.gephi.appearance.api.AppearanceModel;
@@ -333,39 +335,82 @@ public class GephiStarter {
         }
     }
 
+    /*
+     * With margin=0.1 you can find bounds in which 90% of nodes will fit
+     */
+    static JsonObject getGraphBounds(Graph graph, Float margin) {
+        List<Float> xs = new ArrayList<>();
+        List<Float> ys = new ArrayList<>();
+        for (var node : graph.getNodes()) {
+            xs.add(node.x());
+            ys.add(node.y());
+        }
+        Collections.sort(xs);
+        Collections.sort(ys);
+        
+        var overallNodes = xs.size();
+        int amountOfNodesToIgnore = (int)Math.floor(overallNodes*margin);
+        xs = xs.subList(amountOfNodesToIgnore, overallNodes-amountOfNodesToIgnore);
+        ys = ys.subList(amountOfNodesToIgnore, overallNodes-amountOfNodesToIgnore);
+
+
+        float xMin = xs.get(0);
+        float xMax = xs.get(xs.size()-1);
+        float yMin = ys.get(0);
+        float yMax = ys.get(ys.size()-1);
+        float graphWidth = xMax-xMin;
+        float graphHeight = yMax-yMin;
+        var obj = new JsonObject();
+        obj.addProperty("xMin", xMin);
+        obj.addProperty("xMax", xMax);
+        obj.addProperty("yMin", yMin);
+        obj.addProperty("yMax", yMax);
+        obj.addProperty("graphWidth", graphWidth);
+        obj.addProperty("graphHeight", graphHeight);
+        return obj;
+    }
+    static JsonObject getGraphBounds(Float margin) {
+        var graph =Lookup.getDefault().lookup(GraphController.class).getGraphModel().getGraphVisible();
+        return getGraphBounds(graph, margin);
+    }
+    static JsonObject getGraphBounds(Graph graph){
+        return getGraphBounds(graph, 0f);
+    }
     private static JsonObject printNodeCoordinates() {
         System.out.println("Entered printNodeCoordinates()...");
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         var graph = graphModel.getUndirectedGraph();
         
-        var xs = new ArrayList<Float>();
-        var ys = new ArrayList<Float>();
-        for (var node : graph.getNodes()) {
-            xs.add(node.x());
-            ys.add(node.y());
-        }
+        
+        // System.out.println("bounds for 100% and 90% of nodes:");
+        // System.out.println(getGraphBounds(graph));
+        // System.out.println(getGraphBounds(graph,0.1f));
+        
 
-        Collections.sort(xs);
-        Collections.sort(ys);
+        /* // find bounds of 90% y-positive nodes
+        var positiveYs = ys.stream().filter((y) -> y >= 0).collect(Collectors.toList());
+        System.out.printf("There are %s positive y's%n",positiveYs.size());
+        Float boundCount = positiveYs.size() * 0.9f;
+        var boundY = positiveYs.stream().skip(boundCount.longValue()).findFirst().get();
+        System.out.printf("%s %s %n",boundCount,boundY); */
 
-        float xMin = xs.get(0);
-        float xMax = xs.get(xs.size()-1);
-        float xMedian = xs.get(xs.size()/2);
-        float xGephiCenterRel = Math.abs(xMin)/(xMax-xMin);
-        float graphWidth = xMax-xMin;
+
+        
+        // float xMedian = xs.get(xs.size()/2);
+        // float xGephiCenterRel = Math.abs(xMin)/(xMax-xMin);
+        
         // double xMiddle = xs.stream().mapToDouble(Double::valueOf).sum() / xs.size();
 
 
-        float yMin = ys.get(0);
-        float yMax = ys.get(ys.size()-1);
-        float yMedian = ys.get(ys.size()/2);
-        float yGephiCenterRel = Math.abs(yMin)/(yMax-yMin);
-        float graphHeight = yMax-yMin;
+        
+        // float yMedian = ys.get(ys.size()/2);
+        // float yGephiCenterRel = Math.abs(yMin)/(yMax-yMin);
+        
         // double yMiddle = ys.stream().mapToDouble(Double::valueOf).sum() / ys.size();
 
-        var graphBounds = new Rectangle2D.Float(xMin,yMin,graphWidth,graphHeight);
+        // var graphBounds = new Rectangle2D.Float(xMin,yMin,graphWidth,graphHeight);
         
-        System.out.println(graphBounds);
+        // System.out.println(graphBounds);
 
         var nodes = new ArrayList<Node>(graph.getNodes().toCollection());
         
@@ -374,7 +419,7 @@ public class GephiStarter {
         var fromTopComp = Comparator.comparing(Node::y);
         var fromBottomComp = Comparator.comparing(Node::y).reversed();
 
-        final int thresholdCountNodes = 25;
+        final int thresholdCountNodes = 1;
         
         
         //TODO: handle if threshold > nodes.size
@@ -402,7 +447,7 @@ public class GephiStarter {
         // System.out.println(" "+getRelCoords(graphBounds, threshRect)); ;
         var threshJson = new JsonObject();
         threshJson.addProperty("threshold", thresholdCountNodes);
-        threshJson.add("relative", getRelativeCoords(graphBounds, threshRect, true));
+        // threshJson.add("relative", getRelativeCoords(graphBounds, threshRect, true));
         
         threshJson.addProperty("fromLeft", fromLeftReachedAt);
         threshJson.addProperty("fromRight", fromRightReachedAt);
@@ -410,17 +455,17 @@ public class GephiStarter {
         threshJson.addProperty("fromBottom", fromBottomReachedAt);
 
 
-        var fromLeftRel = (fromLeftReachedAt-xMin)/graphWidth;
-        threshJson.addProperty("fromLeftRel", fromLeftRel);
-        var fromRightRel = (fromLeftReachedAt-xMin)/graphWidth;
+        // var fromLeftRel = (fromLeftReachedAt-xMin)/graphWidth;
+        // threshJson.addProperty("fromLeftRel", fromLeftRel);
+        // var fromRightRel = (fromLeftReachedAt-xMin)/graphWidth;
         threshJson.addProperty("fromRight", fromRightReachedAt);
         threshJson.addProperty("fromTop", fromTopReachedAt);
         threshJson.addProperty("fromBottom", fromBottomReachedAt);
         
         var drawingHints = new JsonObject();
         var gephiCenter = new JsonObject();
-        gephiCenter.addProperty("x", xGephiCenterRel);
-        gephiCenter.addProperty("y", 1 - yGephiCenterRel);
+        // gephiCenter.addProperty("x", xGephiCenterRel);
+        // gephiCenter.addProperty("y", 1 - yGephiCenterRel);
         drawingHints.add("gephiCenter", gephiCenter);
         // drawingHints.add
 
@@ -450,18 +495,15 @@ public class GephiStarter {
         // System.out.printf("Y. Min: %f, max: %f, median: %f%n",xs.get(0), xs.get(xs.size()-1),xs.get(xs.size()/2));
 
         var root = new JsonObject();
-        var xObj = new JsonObject();
-        xObj.addProperty("min", xMin);
-        xObj.addProperty("max", xMax);
-        xObj.addProperty("median", xMedian);
-        xObj.addProperty("gephiCenterRel", xGephiCenterRel);
+        
+        // xObj.addProperty("median", xMedian);
+        // xObj.addProperty("gephiCenterRel", xGephiCenterRel);
         // xObj.addProperty("middle", xMiddle);
-        root.add("x", xObj);
+        // root.add("x", xObj);
         var yObj = new JsonObject();
-        yObj.addProperty("min", yMin);
-        yObj.addProperty("max", yMax);
-        yObj.addProperty("median", yMedian);
-        yObj.addProperty("gephiCenterRel", yGephiCenterRel);
+        
+        // yObj.addProperty("median", yMedian);
+        // yObj.addProperty("gephiCenterRel", yGephiCenterRel);
         
         // yObj.addProperty("middle", yMiddle);
         root.add("y", yObj);
@@ -1002,7 +1044,8 @@ public class GephiStarter {
 
                 PNGExporter pngExporter = null;
                 if (options.has("PNGExporter")) {
-                    pngExporter = new MyPNGExporter(options.get("PNGExporter").getAsJsonObject());
+                    var pngOpts = options.get("PNGExporter").getAsJsonObject();
+                    pngExporter = new MyPNGExporter(pngOpts);
                 } else {
                     pngExporter = new MyPNGExporter();
                 }
@@ -1076,11 +1119,14 @@ public class GephiStarter {
 
 
 class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter, LongTask {
+    
+    private static ScriptEngine engine = new ScriptEngineManager().getEngineByName("JavaScript");
 
     private JsonObject options = new JsonObject();
-    private Float scalingStart = null;
-    private Float scalingStep = null;
-    private static int scalingIter = 0;
+    private static int iteration = 0;
+    private static String scalingExpr = null;
+    private static String translateXExpr = null;
+    private static String translateYExpr = null;
 
     private ProgressTicket progress;
     private boolean cancel = false;
@@ -1093,14 +1139,22 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
     private G2DTarget target;
     private Color oldColor;
 
+    private Float scaling = 1f;
+
     public MyPNGExporter(){}
     public MyPNGExporter(JsonObject options) {
         super();
         this.options = options;
-        if (options.has("scalingStart")) {
-            scalingStart = options.get("scalingStart").getAsFloat();
-            scalingStep = options.get("scalingStep").getAsFloat();
+        if (options.has("scaling")) {
+            scalingExpr = options.get("scaling").getAsString();
         }
+        if (options.has("translateX")) {
+            translateXExpr = options.get("translateX").getAsString();
+        }
+        if (options.has("translateY")) {
+            translateYExpr = options.get("translateY").getAsString();
+        }
+        // System.out.println("MyPNGExporter object created");
     }
 
     @Override
@@ -1121,33 +1175,88 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
             ((LongTask) target).setProgressTicket(progress);
         }
 
+        target.refresh();
+        
+        // var graph = Lookup.getDefault().lookup(GraphModel.class).getUndirectedGraphVisible();
+
+
         try {
+            // if user wants to use graph size in his expressions
+            if (options.has("boundsMargin")) {
+                var graphMargin = options.get("boundsMargin").getAsFloat();
+                String json = GephiStarter.getGraphBounds(graphMargin).toString();
+                System.out.printf("Bounds for margin=%s: %s%n",graphMargin,json);
+                engine.eval("bounds = "+json);
+                // engine.eval("print('from js!');print(bounds.yMax);");
+            }
+
+            // System.out.println("MyPNGExporter expressons start");
+            if (scalingExpr != null) {
+                String scalingExprLocal = scalingExpr
+                    .replaceAll("\\bi\\b", String.valueOf(iteration))
+                    .replaceAll("\\bw\\b", String.valueOf(width))
+                    .replaceAll("\\bh\\b", String.valueOf(height));
+                
+                scaling = ((Number)engine.eval(scalingExprLocal)).floatValue();
+                target.setScaling(scaling);
+            }
+            
+            var translateX = target.getTranslate().getX();
+            var translateY = target.getTranslate().getY();
+            if (translateXExpr != null) {
+                String expressionLocal = translateXExpr
+                    .replaceAll("\\bi\\b", String.valueOf(iteration))
+                    .replaceAll("\\bw\\b", String.valueOf(width))
+                    .replaceAll("\\bh\\b", String.valueOf(height));
+                Number value = (Number)engine.eval(expressionLocal);
+                translateX = value.floatValue();
+            }
+            if (translateYExpr != null) {
+                String expressionLocal = translateYExpr
+                    .replaceAll("\\bi\\b", String.valueOf(iteration))
+                    .replaceAll("\\bw\\b", String.valueOf(width))
+                    .replaceAll("\\bh\\b", String.valueOf(height));
+                Number value = (Number)engine.eval(expressionLocal);
+                translateY = value.floatValue();
+            }
+            target.getTranslate().set(translateX, translateY);
+            // System.out.println("MyPNGExporter expressons finish");
+            // engine.put("bounds", GephiStarter.getGraphBounds(0.01f).toString());
+            
+            
+
+
             target.refresh();
-            // var origTranslateX = target.getTranslate().getX();
-            // var origTranslateY = target.getTranslate().getY();
+            
+            
+            
             
             // var scaling = target.getScaling();
             // target.setScaling(0.5f);
             // target.getTranslate().set(0, 0);
-            if (scalingStart != null && scalingStep != null) {
-                var newScaling = scalingStart+(scalingStep*scalingIter++);
+            /* if (scalingStart != null && scalingStep != null) {
+                var newScaling = scalingStart+(scalingStep*scalingIter);
                 System.out.println("Dynamic scaling:"+newScaling);
                 target.setScaling(newScaling);
             }
             else if (options.has("scaling")) {
                 target.setScaling(options.get("scaling").getAsFloat());
-            }
-            if (options.has("translate")) {
+            } */
+            /* if (options.has("translate")) {
                 var transObj = options.get("translate").getAsJsonObject();
                 target.getTranslate().set(transObj.get("x").getAsFloat(),transObj.get("y").getAsFloat());
-            }
-            target.refresh();
+            } */
+            /* if (options.has("translateX")) {
+                var transObj = options.get("translateX").getAsString();
+                target.getTranslate().set(transObj.get("x").getAsFloat(),transObj.get("y").getAsFloat());
+            } */
+            // target.refresh();
             // System.out.printf("target.getHeight()=%s,%ntarget.getScaling()=%s,%ntarget.getTranslate()=%s%n",
             //     target.getHeight(),target.getScaling(),target.getTranslate()); 
 
             // print useful info
             var info = new JsonObject();
-            info.addProperty("scaling", target.getScaling());
+            info.addProperty("scaling", scaling);
             info.addProperty("translateX", target.getTranslate().getX());
             info.addProperty("translateY", target.getTranslate().getY());
             System.out.println(info);
@@ -1156,10 +1265,35 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
 
             Image sourceImg = target.getImage();
             
-            Graphics srcGraphics = sourceImg.getGraphics();
-            System.out.println(srcGraphics.getClipBounds());
+            if (options.has("drawRect")) {
+                // var rectJson = options.get("drawRect").getAsJsonObject();
+                var rectJson = GephiStarter.getGraphBounds(0.01f);
+                Graphics srcGraphics = sourceImg.getGraphics();
+                srcGraphics.setColor(Color.GREEN);
+                var origRect = new Rectangle2D.Float(
+                    rectJson.get("xMin").getAsFloat(),
+                    rectJson.get("yMax").getAsFloat(),
+                    rectJson.get("graphWidth").getAsFloat(),
+                    rectJson.get("graphHeight").getAsFloat()
+                );
+                System.out.println(origRect);
+
+                var newRect = originalToDrawingCoords(origRect);
+                System.out.println(newRect);
+                srcGraphics.drawRect((int)newRect.getX(), (int)newRect.getY(), (int)newRect.getWidth(),(int)newRect.getHeight());
+            }
             
-            System.out.println("sourceImg.getWidth="+sourceImg.getWidth(null));
+            // var origRect = new Rectangle2D.Float(-799f,-751f,1749f,1312f);
+            
+            // new Polygon(
+            
+            
+            
+            // Float xDrawing = width/2-(int)799*scaling;
+            // srcGraphics.drawRect(xDrawing.intValue(),0,200,200);
+            // System.out.println(srcGraphics.getClipBounds());
+            
+            // System.out.println("sourceImg.getWidth="+sourceImg.getWidth(null));
 
             // new Frame().add(srcGraphics);
 
@@ -1192,7 +1326,7 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
             // srcGraphics.clipRect
             // srcGraphics.setClip(width/2, height/2, width/4, height/4);
             
-            
+            iteration++;
             BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
             img.getGraphics().drawImage(sourceImg, 0, 0, null);
             ImageIO.write(img, "png", stream);
@@ -1207,6 +1341,23 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
 
         return !cancel;
     }
+
+    public Rectangle2D.Float originalToDrawingCoords(float minX, float maxY, float graphWidth, float graphHeight) {
+        return originalToDrawingCoords(new Rectangle2D.Float(
+            minX,maxY,graphWidth,graphHeight
+        ));
+    }
+    public Rectangle2D.Float originalToDrawingCoords(Rectangle2D.Float rect) {
+        System.out.printf("%s %s%n",width,scaling);
+        return new Rectangle2D.Float(
+            width/2+ rect.x*scaling,
+            height/2 - rect.y*scaling,
+            rect.width*scaling,
+            rect.height*scaling
+        );
+    }
+
+    // public void drawRect(Graphics graphics, float origX, float origY, float origWidth, float origHeight) {}
 
     public int getHeight() {
         return height;
