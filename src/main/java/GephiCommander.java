@@ -79,6 +79,7 @@ import org.gephi.preview.api.PreviewModel;
 import org.gephi.preview.api.PreviewProperties;
 import org.gephi.preview.api.PreviewProperty;
 import org.gephi.preview.api.RenderTarget;
+import org.gephi.preview.api.Vector;
 import org.gephi.preview.types.DependantColor;
 import org.gephi.preview.types.DependantOriginalColor;
 import org.gephi.preview.types.EdgeColor;
@@ -348,10 +349,11 @@ public class GephiCommander {
         Collections.sort(xs);
         Collections.sort(ys);
         
-        var overallNodes = xs.size();
+        int overallNodes = xs.size();
         int amountOfNodesToIgnore = (int)Math.floor(overallNodes*margin);
         xs = xs.subList(amountOfNodesToIgnore, overallNodes-amountOfNodesToIgnore);
         ys = ys.subList(amountOfNodesToIgnore, overallNodes-amountOfNodesToIgnore);
+        // System.out.printf("overallNodes=%s, amountOfNodesToIgnore=%s%n",overallNodes,amountOfNodesToIgnore);
 
 
         float xMin = xs.get(0);
@@ -367,6 +369,7 @@ public class GephiCommander {
         obj.addProperty("yMax", yMax);
         obj.addProperty("graphWidth", graphWidth);
         obj.addProperty("graphHeight", graphHeight);
+        System.out.println("xMin="+xMin);
         return obj;
     }
     static JsonObject getGraphBounds(Float margin) {
@@ -1182,9 +1185,11 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
 
         try {
             // if user wants to use graph size in his expressions
+            JsonObject boundsJsonObj = null;
             if (options.has("boundsMargin")) {
                 var graphMargin = options.get("boundsMargin").getAsFloat();
-                String json = GephiCommander.getGraphBounds(graphMargin).toString();
+                boundsJsonObj = GephiCommander.getGraphBounds(graphMargin);
+                String json = boundsJsonObj.toString();
                 System.out.printf("Bounds for margin=%s: %s%n",graphMargin,json);
                 engine.eval("bounds = "+json);
                 // engine.eval("print('from js!');print(bounds.yMax);");
@@ -1265,7 +1270,23 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
 
             Image sourceImg = target.getImage();
             
-            if (options.has("drawRect")) {
+            if (boundsJsonObj != null && 
+                options.has("drawBounds") &&
+                options.get("drawBounds").getAsBoolean() 
+                ) {
+                Graphics srcGraphics = sourceImg.getGraphics();
+                srcGraphics.setColor(Color.GREEN);
+                var origRect = new Rectangle2D.Float(
+                    boundsJsonObj.get("xMin").getAsFloat(),
+                    boundsJsonObj.get("yMax").getAsFloat(),
+                    boundsJsonObj.get("graphWidth").getAsFloat(),
+                    boundsJsonObj.get("graphHeight").getAsFloat()
+                );
+                var newRect = originalToDrawingCoords(origRect);
+                srcGraphics.drawRect((int)newRect.getX(), (int)newRect.getY(), (int)newRect.getWidth(),(int)newRect.getHeight());
+            }
+
+            /* if (options.has("drawRect")) {
                 // var rectJson = options.get("drawRect").getAsJsonObject();
                 var rectJson = GephiCommander.getGraphBounds(0.01f);
                 Graphics srcGraphics = sourceImg.getGraphics();
@@ -1281,7 +1302,7 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
                 var newRect = originalToDrawingCoords(origRect);
                 System.out.println(newRect);
                 srcGraphics.drawRect((int)newRect.getX(), (int)newRect.getY(), (int)newRect.getWidth(),(int)newRect.getHeight());
-            }
+            } */
             
             // var origRect = new Rectangle2D.Float(-799f,-751f,1749f,1312f);
             
@@ -1348,13 +1369,53 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
         ));
     }
     public Rectangle2D.Float originalToDrawingCoords(Rectangle2D.Float rect) {
-        System.out.printf("%s %s%n",width,scaling);
+        float scaling = target.getScaling();
+        // System.out.printf("%s %s%n",width,scaling);
+        Vector transl = target.getTranslate();
+        // transl.mult(scaling);
+        System.out.printf("%s %s %s %s %s %n",rect.x,rect.y,transl.x,transl.y,scaling);
+
+        // I have no idea why this works
         return new Rectangle2D.Float(
-            width/2+ rect.x*scaling,
-            height/2 - rect.y*scaling,
-            rect.width*scaling,
-            rect.height*scaling
+            (rect.x  + transl.x)* scaling +width/2*(1-scaling),
+            (-rect.y + transl.y)* scaling +height/2*(1-scaling),
+            rect.width * scaling,
+            rect.height * scaling
         );
+
+        /* // this works for scaling="0.8"; translateX="w/2+i*50"; translateY="h/2+i*50"; $res = 800,600;
+            //for scaling=1 use +0 +0 instead of 80 60
+        return new Rectangle2D.Float(
+            (rect.x  + transl.x)* scaling +80,
+            (-rect.y + transl.y)* scaling +60,
+            rect.width * scaling,
+            rect.height * scaling
+        ); */
+
+        /* // this moves with same speed but from wrong position
+            // for scaling="0.8"; translateX="w/2+i*50"; translateY="h/2+i*50"; 
+        return new Rectangle2D.Float(
+            rect.x * scaling + transl.x* scaling,
+            -rect.y * scaling + transl.y* scaling,
+            rect.width * scaling,
+            rect.height * scaling
+        ); */
+        
+        /* // this is little bit faster then needed for scaling="0.8"; translateX="w/2+i*50"; translateY="h/2+i*50";
+        return new Rectangle2D.Float(
+            rect.x * scaling + transl.x,
+            -rect.y * scaling + transl.y,
+            rect.width * scaling,
+            rect.height * scaling
+        ); */
+
+        /* //this works for scaling=1 and dynamic transX transY
+        return new Rectangle2D.Float(
+            rect.x+transl.x,
+            -rect.y +transl.y,
+            rect.width,
+            rect.height
+        ); */
     }
 
     // public void drawRect(Graphics graphics, float origX, float origY, float origWidth, float origHeight) {}
