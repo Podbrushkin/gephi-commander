@@ -98,7 +98,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-public class GephiStarter {
+public class GephiCommander {
     
     public static void main(String[] args) {
         var options = JsonParser.parseReader(new InputStreamReader(System.in)).getAsJsonArray();
@@ -1184,7 +1184,7 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
             // if user wants to use graph size in his expressions
             if (options.has("boundsMargin")) {
                 var graphMargin = options.get("boundsMargin").getAsFloat();
-                String json = GephiStarter.getGraphBounds(graphMargin).toString();
+                String json = GephiCommander.getGraphBounds(graphMargin).toString();
                 System.out.printf("Bounds for margin=%s: %s%n",graphMargin,json);
                 engine.eval("bounds = "+json);
                 // engine.eval("print('from js!');print(bounds.yMax);");
@@ -1267,7 +1267,7 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
             
             if (options.has("drawRect")) {
                 // var rectJson = options.get("drawRect").getAsJsonObject();
-                var rectJson = GephiStarter.getGraphBounds(0.01f);
+                var rectJson = GephiCommander.getGraphBounds(0.01f);
                 Graphics srcGraphics = sourceImg.getGraphics();
                 srcGraphics.setColor(Color.GREEN);
                 var origRect = new Rectangle2D.Float(
