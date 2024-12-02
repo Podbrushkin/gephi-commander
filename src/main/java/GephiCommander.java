@@ -2,6 +2,8 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Image;
+import java.awt.Point;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -378,6 +380,11 @@ public class GephiCommander {
     }
     static JsonObject getGraphBounds(Graph graph){
         return getGraphBounds(graph, 0f);
+    }
+
+    static Node getNodeById(Object id) {
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        return graphModel.getGraph().getNode(id);
     }
     private static JsonObject printNodeCoordinates() {
         System.out.println("Entered printNodeCoordinates()...");
@@ -968,7 +975,23 @@ public class GephiCommander {
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_SIZE, 4.0f);
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_OPACITY, 40);
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_COLOR, new DependantColor(Color.BLACK));
-        model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT, Boolean.TRUE);
+        
+        if (previewOptions.has("edgeRescaleWeight")) {
+            var obj = previewOptions.get("edgeRescaleWeight").getAsJsonObject();
+            model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT, Boolean.TRUE);
+            if (obj.has("min")) {
+                var min = obj.get("min").getAsInt();
+                model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT_MIN, min);
+                
+            }
+            if (obj.has("max")) {
+                var max = obj.get("max").getAsInt();
+                model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT_MAX, max);
+                
+            }
+        }
+        
+        
         //Edge Properties
         model.getProperties().putValue(PreviewProperty.SHOW_EDGES, Boolean.TRUE);
         
@@ -1143,6 +1166,9 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
     private Color oldColor;
 
     private Float scaling = 1f;
+    private static JsonObject previousInfo;
+    private Node node;
+    private Point2D.Float pointTr;
 
     public MyPNGExporter(){}
     public MyPNGExporter(JsonObject options) {
@@ -1158,6 +1184,8 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
             translateYExpr = options.get("translateY").getAsString();
         }
         // System.out.println("MyPNGExporter object created");
+        node = GephiCommander.getNodeById("2");
+        
     }
 
     @Override
@@ -1180,9 +1208,10 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
 
         target.refresh();
         
+        
         // var graph = Lookup.getDefault().lookup(GraphModel.class).getUndirectedGraphVisible();
 
-
+        // System.out.printf("%s %s%n",node.x(),node.y());
         try {
             // if user wants to use graph size in his expressions
             JsonObject boundsJsonObj = null;
@@ -1194,6 +1223,15 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
                 engine.eval("bounds = "+json);
                 // engine.eval("print('from js!');print(bounds.yMax);");
             }
+            // user can access last used scaling and translate
+            // String prevExpr = "let prev";
+            if (previousInfo != null) {
+                String json = previousInfo.toString();
+                engine.eval("prev = "+json);
+                // prevExpr += " = "+json;
+            }
+            // engine.eval(prevExpr+";");
+            
 
             // System.out.println("MyPNGExporter expressons start");
             if (scalingExpr != null) {
@@ -1205,6 +1243,15 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
                 scaling = ((Number)engine.eval(scalingExprLocal)).floatValue();
                 target.setScaling(scaling);
             }
+            if (node != null) {
+                var point = new Point2D.Float(node.x(),node.y());
+                // pointTr = scaleAndTranslateToDrawingCoord(point);
+                
+                engine.put("nodeX",point.x);
+                engine.put("nodeY",point.y);
+            }
+
+            
             
             var translateX = target.getTranslate().getX();
             var translateY = target.getTranslate().getY();
@@ -1212,7 +1259,8 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
                 String expressionLocal = translateXExpr
                     .replaceAll("\\bi\\b", String.valueOf(iteration))
                     .replaceAll("\\bw\\b", String.valueOf(width))
-                    .replaceAll("\\bh\\b", String.valueOf(height));
+                    .replaceAll("\\bh\\b", String.valueOf(height))
+                    .replaceAll("\\bsc\\b", String.valueOf(scaling));
                 Number value = (Number)engine.eval(expressionLocal);
                 translateX = value.floatValue();
             }
@@ -1220,7 +1268,8 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
                 String expressionLocal = translateYExpr
                     .replaceAll("\\bi\\b", String.valueOf(iteration))
                     .replaceAll("\\bw\\b", String.valueOf(width))
-                    .replaceAll("\\bh\\b", String.valueOf(height));
+                    .replaceAll("\\bh\\b", String.valueOf(height))
+                    .replaceAll("\\bsc\\b", String.valueOf(scaling));
                 Number value = (Number)engine.eval(expressionLocal);
                 translateY = value.floatValue();
             }
@@ -1232,6 +1281,8 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
 
 
             target.refresh();
+            
+            
             
             
             
@@ -1265,16 +1316,19 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
             info.addProperty("translateX", target.getTranslate().getX());
             info.addProperty("translateY", target.getTranslate().getY());
             System.out.println(info);
+            previousInfo = info;
 
             Progress.switchToIndeterminate(progress);
 
             Image sourceImg = target.getImage();
+            Graphics srcGraphics = sourceImg.getGraphics();
+            // target.
             
             if (boundsJsonObj != null && 
                 options.has("drawBounds") &&
                 options.get("drawBounds").getAsBoolean() 
                 ) {
-                Graphics srcGraphics = sourceImg.getGraphics();
+                
                 srcGraphics.setColor(Color.GREEN);
                 var origRect = new Rectangle2D.Float(
                     boundsJsonObj.get("xMin").getAsFloat(),
@@ -1285,67 +1339,15 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
                 var newRect = originalToDrawingCoords(origRect);
                 srcGraphics.drawRect((int)newRect.getX(), (int)newRect.getY(), (int)newRect.getWidth(),(int)newRect.getHeight());
             }
-
-            /* if (options.has("drawRect")) {
-                // var rectJson = options.get("drawRect").getAsJsonObject();
-                var rectJson = GephiCommander.getGraphBounds(0.01f);
-                Graphics srcGraphics = sourceImg.getGraphics();
-                srcGraphics.setColor(Color.GREEN);
-                var origRect = new Rectangle2D.Float(
-                    rectJson.get("xMin").getAsFloat(),
-                    rectJson.get("yMax").getAsFloat(),
-                    rectJson.get("graphWidth").getAsFloat(),
-                    rectJson.get("graphHeight").getAsFloat()
-                );
-                System.out.println(origRect);
-
-                var newRect = originalToDrawingCoords(origRect);
-                System.out.println(newRect);
-                srcGraphics.drawRect((int)newRect.getX(), (int)newRect.getY(), (int)newRect.getWidth(),(int)newRect.getHeight());
-            } */
-            
-            // var origRect = new Rectangle2D.Float(-799f,-751f,1749f,1312f);
-            
-            // new Polygon(
-            
-            
-            
-            // Float xDrawing = width/2-(int)799*scaling;
-            // srcGraphics.drawRect(xDrawing.intValue(),0,200,200);
-            // System.out.println(srcGraphics.getClipBounds());
-            
-            // System.out.println("sourceImg.getWidth="+sourceImg.getWidth(null));
-
-            // new Frame().add(srcGraphics);
-
-            // this line is always diagonal of result image regardless of margin
-            /* srcGraphics.setColor(Color.GREEN);
-            srcGraphics.drawLine(0, 0, width, height);
-
-            // vertical central line
-            srcGraphics.drawLine(width/2, 0, width/2, height);
-
-            // horizontal central line
-            srcGraphics.setColor(Color.BLUE);
-            srcGraphics.drawLine(0, height/2, width, height/2);
+            srcGraphics.setColor(Color.RED);
+            // srcGraphics.drawLine(width/2, height/2, (int)pointTr.x, (int)pointTr.y);
+            // srcGraphics.fillOval(0, 0, width/100, height/100);
+            var str = String.format("sc=%s\ntr=%s",target.getScaling(),target.getTranslate());
+            var font = srcGraphics.getFont().deriveFont(32f);
+            srcGraphics.setFont(font);
+            srcGraphics.drawString(str,0,height/2);
 
             
-            srcGraphics.drawLine(0, 0, (int)origTranslateX, (int)origTranslateY);
-            srcGraphics.fillRect((int)origTranslateX,(int)origTranslateY,10,10);
-            var newFont = srcGraphics.getFont().deriveFont(32.0f);
-            srcGraphics.setFont(newFont);
-            srcGraphics.drawString("%.0f,%.0f".formatted(origTranslateX,origTranslateY),
-                (int)origTranslateX,(int)origTranslateY); */
-
-            //
-            // srcGraphics
-
-            // draw text
-            
-            // srcGraphics.setColor(Color.GREEN);
-            
-            // srcGraphics.clipRect
-            // srcGraphics.setClip(width/2, height/2, width/4, height/4);
             
             iteration++;
             BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
@@ -1368,57 +1370,38 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
             minX,maxY,graphWidth,graphHeight
         ));
     }
+    
+    /* private Point2D.Float scaleToDrawingCoord(Point2D.Float point) {
+        float scaling = target.getScaling();
+        var newX = width/2 - point.x*scaling;
+        var newY = height/2 + point.y*scaling;
+        return new Point2D.Float((float)newX, (float)newY);
+    } */
+    private Point2D.Float scaleAndTranslateToDrawingCoord(Point2D.Float point) {
+        float scaling = target.getScaling();
+        Vector transl = target.getTranslate();
+        var x = (point.getX()  + transl.x)* scaling +width/2*(1-scaling);
+        var y = (-point.getY() + transl.y)* scaling +height/2*(1-scaling);
+        return new Point2D.Float((float)x, (float)y);
+    }
+    
     public Rectangle2D.Float originalToDrawingCoords(Rectangle2D.Float rect) {
         float scaling = target.getScaling();
         // System.out.printf("%s %s%n",width,scaling);
         Vector transl = target.getTranslate();
         // transl.mult(scaling);
         System.out.printf("%s %s %s %s %s %n",rect.x,rect.y,transl.x,transl.y,scaling);
-
+        
+        var oldPoint = new Point2D.Float(rect.x, rect.y);
+        var newPoint = scaleAndTranslateToDrawingCoord(oldPoint);
         // I have no idea why this works
         return new Rectangle2D.Float(
-            (rect.x  + transl.x)* scaling +width/2*(1-scaling),
-            (-rect.y + transl.y)* scaling +height/2*(1-scaling),
+            newPoint.x,
+            newPoint.y,
             rect.width * scaling,
             rect.height * scaling
         );
-
-        /* // this works for scaling="0.8"; translateX="w/2+i*50"; translateY="h/2+i*50"; $res = 800,600;
-            //for scaling=1 use +0 +0 instead of 80 60
-        return new Rectangle2D.Float(
-            (rect.x  + transl.x)* scaling +80,
-            (-rect.y + transl.y)* scaling +60,
-            rect.width * scaling,
-            rect.height * scaling
-        ); */
-
-        /* // this moves with same speed but from wrong position
-            // for scaling="0.8"; translateX="w/2+i*50"; translateY="h/2+i*50"; 
-        return new Rectangle2D.Float(
-            rect.x * scaling + transl.x* scaling,
-            -rect.y * scaling + transl.y* scaling,
-            rect.width * scaling,
-            rect.height * scaling
-        ); */
-        
-        /* // this is little bit faster then needed for scaling="0.8"; translateX="w/2+i*50"; translateY="h/2+i*50";
-        return new Rectangle2D.Float(
-            rect.x * scaling + transl.x,
-            -rect.y * scaling + transl.y,
-            rect.width * scaling,
-            rect.height * scaling
-        ); */
-
-        /* //this works for scaling=1 and dynamic transX transY
-        return new Rectangle2D.Float(
-            rect.x+transl.x,
-            -rect.y +transl.y,
-            rect.width,
-            rect.height
-        ); */
     }
-
-    // public void drawRect(Graphics graphics, float origX, float origY, float origWidth, float origHeight) {}
 
     public int getHeight() {
         return height;
