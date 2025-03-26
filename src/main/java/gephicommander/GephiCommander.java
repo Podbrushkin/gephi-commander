@@ -1,3 +1,5 @@
+package gephicommander;
+
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics;
@@ -94,12 +96,13 @@ import org.gephi.utils.progress.Progress;
 import org.gephi.utils.progress.ProgressTicket;
 import org.openide.nodes.Node.Property;
 import org.openide.util.Lookup;
-//https://github.com/KiranGershenfeld/VisualizingTwitchCommunities/blob/AutoAtlasGeneration/AtlasGeneration/Java/App.java
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+
+//https://github.com/KiranGershenfeld/VisualizingTwitchCommunities/blob/AutoAtlasGeneration/AtlasGeneration/Java/App.java
 public class GephiCommander {
     
     public static void main(String[] args) {
