@@ -2,7 +2,6 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Image;
-import java.awt.Point;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
@@ -1050,6 +1049,7 @@ public class GephiCommander {
                 ExporterGEXF graphExporter = (ExporterGEXF) exporter;
                 graphExporter.
             } */
+        //    GexfExporter
             if (exporter instanceof GraphExporter) {
                 GraphExporter graphExporter = (GraphExporter) exporter;
                 graphExporter.setWorkspace(workspace);
@@ -1184,7 +1184,16 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
             translateYExpr = options.get("translateY").getAsString();
         }
         // System.out.println("MyPNGExporter object created");
-        node = GephiCommander.getNodeById("2");
+        if (options.has("findNode")) {
+            var jsonPrim = options.get("findNode").getAsJsonPrimitive();
+            if (jsonPrim.isString()) {
+                node = GephiCommander.getNodeById(jsonPrim.getAsString());
+            } else {
+                node = GephiCommander.getNodeById(jsonPrim.getAsNumber());
+            }
+            System.out.println("found node: "+node);
+        }
+        
         
     }
 
@@ -1339,13 +1348,13 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
                 var newRect = originalToDrawingCoords(origRect);
                 srcGraphics.drawRect((int)newRect.getX(), (int)newRect.getY(), (int)newRect.getWidth(),(int)newRect.getHeight());
             }
-            srcGraphics.setColor(Color.RED);
+            srcGraphics.setColor(Color.GRAY);
             // srcGraphics.drawLine(width/2, height/2, (int)pointTr.x, (int)pointTr.y);
             // srcGraphics.fillOval(0, 0, width/100, height/100);
             var str = String.format("sc=%s\ntr=%s",target.getScaling(),target.getTranslate());
             var font = srcGraphics.getFont().deriveFont(32f);
             srcGraphics.setFont(font);
-            srcGraphics.drawString(str,0,height/2);
+            srcGraphics.drawString(str,0,(int)(height*0.95));
 
             
             
