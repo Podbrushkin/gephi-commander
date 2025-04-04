@@ -53,9 +53,28 @@ $html | Select-String '([^"]*?\.zip)\"' -allmatches | % Matches | % {$_.groups[1
 Get-ChildItem *.zip | % {Expand-Archive $_ -Force}
 ```
 
-### Create GIF with transparency
+### Create GIF
 ```powershell
 $magickExe = 'C:\Program Files\ImageMagick-7.1.0-Q16-HDRI\magick.exe'
+
+$graphFile = Get-ChildItem -Recurse dolphins.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='layouts'; values=@(
+  @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.02; Scaling=20; steps=40; exportEach=1;
+   export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true}
+  }
+)}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+
+& $magickExe -delay 0 -loop 0 "$dir\*.png" "$dir\output.gif"
+```
+![output](https://github.com/user-attachments/assets/3f7601cc-c693-4656-984e-d48b3aaeffb7)
+
+### Create GIF with transparency
+```powershell
 $graphFile = get-childitem -recurse football.gml
 $dir = $graphFile.Directory
 $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
