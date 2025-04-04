@@ -53,6 +53,26 @@ $html | Select-String '([^"]*?\.zip)\"' -allmatches | % Matches | % {$_.groups[1
 Get-ChildItem *.zip | % {Expand-Archive $_ -Force}
 ```
 
+### Size nodes by column
+
+Nodes in football.gml have a 'value' numeric property, we can use this column to size nodes. Apart from any numeric nodes properties from the file, some default columns are available: degree, inDegree, outDegree. Optionally you can specify minSize and maxSize.
+
+```powershell
+$graphFile = get-childitem -recurse football.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='sizeNodesBy'; column='value'; minSize=10; maxSize=40}
+  @{op='layouts'; values=@(
+    @{name='ForceAtlas2'; 'LinLog mode'=$true; steps=50}
+  )}
+  @{op='export';file=$outFile; resolution=@(320,240); }
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+```
+![football](https://github.com/user-attachments/assets/c6424a45-e9ca-4e95-b99f-b867f2c6df76)
+
 ### Color nodes by community (Modularity)
 
 Applying statistics=Modularity creates a nodes column with id=modularity_class which we can use to color nodes later.

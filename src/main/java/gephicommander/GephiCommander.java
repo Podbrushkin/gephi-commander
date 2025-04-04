@@ -120,8 +120,8 @@ public class GephiCommander {
                 case "colorEdgesBy":
                     colorEdgesByColumn(op.get("columnName").getAsString());
                     break;
-                case "sizeNodesByDegree":
-                    sizeNodesByDegree(op);
+                case "sizeNodesBy":
+                    sizeNodesByColumn(op);
                     break;
                 case "print":
                     printInfo(op.get("values").getAsJsonArray());
@@ -894,16 +894,25 @@ public class GephiCommander {
             throw new IllegalStateException(msg);
         }
     }
-
-    private static void sizeNodesByDegree(JsonObject rankingOptions) {
+    
+    private static void sizeNodesByColumn(JsonObject rankingOptions) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         var appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
         AppearanceModel appearanceModel = appearanceController.getModel();
-
-        Function degreeRanking = appearanceModel.getNodeFunction(graphModel.defaultColumns()
-            .degree(), RankingNodeSizeTransformer.class);
+        
+        Column column = null;
+        String desiredColumn = rankingOptions.get("column").getAsString();
+        switch (desiredColumn) {
+            case "degree" : {column = graphModel.defaultColumns().degree(); break;}
+            case "inDegree" : {column = graphModel.defaultColumns().inDegree(); break;}
+            case "outDegree" : {column = graphModel.defaultColumns().outDegree(); break;}
+            default : {column = graphModel.getNodeTable().getColumn(desiredColumn); break;}
+        }
+        
+        Function columnRanking = appearanceModel.getNodeFunction(column, 
+            RankingNodeSizeTransformer.class);
         RankingNodeSizeTransformer sizeTransformer = 
-            (RankingNodeSizeTransformer) degreeRanking.getTransformer();
+            (RankingNodeSizeTransformer) columnRanking.getTransformer();
 
         int nodeMinSize = rankingOptions.has("minSize") ? rankingOptions.get("minSize").getAsInt() : 5;
         int nodeMaxSize = rankingOptions.has("maxSize") ? rankingOptions.get("maxSize").getAsInt() : nodeMinSize * 4;
@@ -911,7 +920,7 @@ public class GephiCommander {
         sizeTransformer.setMinSize(nodeMinSize);
         sizeTransformer.setMaxSize(nodeMaxSize);
 
-        appearanceController.transform(degreeRanking);
+        appearanceController.transform(columnRanking);
     }
     private static void colorNodesByColumn(String columnName) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
