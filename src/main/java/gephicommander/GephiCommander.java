@@ -938,53 +938,75 @@ public class GephiCommander {
 
         Column column = getNodeColumnIncludingDefault(graphModel, options.get("column").getAsString());
         
-        Function transformingFunction = null;
-        if (options.has("colors")) {
-            var spliter = options.get("colors").getAsJsonArray().spliterator();
-            List<Color> colors = StreamSupport.stream(spliter,false)
-                .map(JsonElement::getAsString)
-                .map(ImportUtils::parseColor)
-                .collect(Collectors.toList());
-            
-            List<Float> colorPositions = new ArrayList<Float>();
-            if (options.has("colorPositions")) {
-                var spliterPos = options.get("colorPositions").getAsJsonArray().spliterator();
-                colorPositions = StreamSupport.stream(spliterPos,false)
-                    .map(JsonElement::getAsFloat)
+        String mode = options.get("mode").getAsString().toLowerCase();
+
+        switch (mode) {
+            case "ranking" : {
+                var spliter = options.get("colors").getAsJsonArray().spliterator();
+                List<Color> colors = StreamSupport.stream(spliter,false)
+                    .map(JsonElement::getAsString)
+                    .map(GephiCommander::parseColor)
                     .collect(Collectors.toList());
+                
+                List<Float> colorPositions = new ArrayList<Float>();
+                if (options.has("colorPositions")) {
+                    var spliterPos = options.get("colorPositions").getAsJsonArray().spliterator();
+                    colorPositions = StreamSupport.stream(spliterPos,false)
+                        .map(JsonElement::getAsFloat)
+                        .collect(Collectors.toList());
+                }
+                if ((colorPositions.size() != 0) && 
+                    (colors.size() != colorPositions.size())
+                    ) {
+                    var msg = "colorPositions.count should be either same as colors.count or 0";
+                    throw new IllegalArgumentException(msg);
+                }
+                if (colorPositions.size() == 0) {
+                    for (int i = 0; i < colors.size(); i++) {
+                        colorPositions.add(1.0f/(colors.size()-1)*i);
+                    }
+                }
+                System.out.println("colorPositions="+colorPositions);
+                float[] colorPositionsPrim = new float[colorPositions.size()];
+                int i = 0;
+                for (Float x : colorPositions) {
+                    colorPositionsPrim[i++] = x;
+                }
+
+                Function transformingFunction = appearanceModel.getNodeFunction(column, RankingElementColorTransformer.class);
+                RankingElementColorTransformer transformer = transformingFunction.getTransformer();
+                transformer.setColors(colors.toArray(new Color[0]));
+                transformer.setColorPositions(colorPositionsPrim);
+
+                appearanceController.transform(transformingFunction);
+                break;
+            } 
+            case "partition" : {
+                Function transformingFunction = appearanceModel.getNodeFunction(column, PartitionElementColorTransformer.class);
+                Partition partition = ((PartitionFunction) transformingFunction).getPartition();
+                Palette palette = PaletteManager.getInstance().generatePalette(partition.size(graph));
+                partition.setColors(graph, palette.getColors());
+
+                appearanceController.transform(transformingFunction);
+                break;
+            } 
+            case "value" : {
+                for (Node node : graphModel.getDirectedGraph().getNodes()) {
+                    try {
+                        String colorValue = node.getAttribute(column).toString();
+                        Color color = GephiCommander.parseColor(colorValue);
+                        if (color != null) {
+                            node.setColor(color);
+                        }
+                    } catch (Exception e) {}
+                }
+                break;
             }
-            if ((colorPositions.size() != 0) && 
-                (colors.size() != colorPositions.size())
-                ) {
-                var msg = "colorPositions.count should be either same as colors.count or 0";
+            default : {
+                String msg = "Allowed color modes are: ranking, partition, value";
                 throw new IllegalArgumentException(msg);
             }
-            if (colorPositions.size() == 0) {
-                for (int i = 0; i < colors.size(); i++) {
-                    colorPositions.add(1.0f/(colors.size()-1)*i);
-                }
-            }
-            System.out.println("colorPositions="+colorPositions);
-            float[] colorPositionsPrim = new float[colorPositions.size()];
-            int i = 0;
-            for (Float x : colorPositions) {
-                colorPositionsPrim[i++] = x;
-            }
-
-            transformingFunction = appearanceModel.getNodeFunction(column, RankingElementColorTransformer.class);
-            RankingElementColorTransformer transformer = transformingFunction.getTransformer();
-            transformer.setColors(colors.toArray(new Color[0]));
-            transformer.setColorPositions(colorPositionsPrim);
-        } else {
-            transformingFunction = appearanceModel.getNodeFunction(column, PartitionElementColorTransformer.class);
-            Partition partition = ((PartitionFunction) transformingFunction).getPartition();
-            Palette palette = PaletteManager.getInstance().generatePalette(partition.size(graph));
-            partition.setColors(graph, palette.getColors());
         }
-
-        
-        appearanceController.transform(transformingFunction);
-
     }
     private static void colorEdgesByColumn(String columnName) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
@@ -1062,7 +1084,7 @@ public class GephiCommander {
         //Image Properties
         if (previewOptions.has("bgColor")) {
             var colorName = previewOptions.get("bgColor").getAsString();
-            var color = ImportUtils.parseColor(colorName);
+            var color = GephiCommander.parseColor(colorName);
             if (color != null) {
                 model.getProperties().putValue(PreviewProperty.BACKGROUND_COLOR, color);
             } else {
@@ -1184,5 +1206,22 @@ public class GephiCommander {
         }
         layout.endAlgo();
         System.out.println("Applying "+ layoutName + " is finished.");
+    }
+
+    private static Color parseColor(String colorValue) {
+        try {
+            Color color = ImportUtils.parseColor(colorValue);
+            if (color != null) return color;
+            
+            // Fallback to RGB parsing (e.g., "255 0 0" or "rgb(255,0,0)")
+            String[] rgb = colorValue.replaceAll("\\D+", " ").trim().split("\\s+");
+            
+            return new Color(
+                Integer.parseInt(rgb[0]),
+                Integer.parseInt(rgb[1]),
+                Integer.parseInt(rgb[2])
+            );
+        } catch (Exception ignored) {}
+        return null;
     }
 }

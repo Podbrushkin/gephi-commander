@@ -85,7 +85,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 
 @(
   @{op='import'; file=$graphFile.FullName }
-  @{op='colorNodesBy';column='value'; colors=@('gray','red')}
+  @{op='colorNodesBy';column='value'; mode='ranking'; colors=@('gray','red')}
   @{op='layouts'; values=@(
     @{name='ForceAtlas2'; 'LinLog mode'=$true; steps=200}
   )}
@@ -103,7 +103,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 
 @(
   @{op='import'; file=$graphFile.FullName }
-  @{op='colorNodesBy';column='value'; colors=@('lightblue','lightgray','red');
+  @{op='colorNodesBy';column='value'; mode='ranking' colors=@('lightblue','lightgray','red');
      colorPositions=@(0, 0.9, 1);
   }
   @{op='layouts'; values=@(
@@ -116,7 +116,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 
 ## Color nodes by String column (Partitioning)
 
-Don't specify colors for the **colorNodesBy** and nodes will be colored in **Partition** mode: all nodes with the same value in provided property will have the same color, colors will be chosen automatically.
+Nodes can be colored in **Partition** mode: all nodes with the same value in provided property will have the same color, colors will be chosen automatically.
 I.e. all nodes in polblogs.gml have a **value** property, which is either 0 or 1. Therefore there will be only two colors:
 
 ```powershell
@@ -129,7 +129,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
   @{op='filters';values=@(
     @{name='GiantComponent'}
   )}
-  @{op='colorNodesBy'; column='value'; }
+  @{op='colorNodesBy'; column='value'; mode='partition' }
   @{op='layouts'; values=@(
     @{name='ForceAtlas2'; steps=200 }
   )}
@@ -137,6 +137,56 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander
 ```
 ![polblogs](https://github.com/user-attachments/assets/b7c9b7c8-7cc4-41dd-8030-1811fef98340)
+
+## Color nodes by property value
+
+If nodes in your file already have a color property:
+
+```powershell
+@'
+graph
+[
+  directed 1
+  node
+  [
+    id 0
+    label Red
+    color red
+  ]
+  node
+  [
+    id 1
+    label Green
+    color #00FF00
+  ]
+  node
+  [
+    id 2
+    label "Blue"
+    color "rgb(0, 0, 255)"
+  ]
+  node
+  [
+    id 3
+    label "No color property"
+  ]
+]
+'@ > coloredGraphMini.gml
+$graphFile = Get-Item coloredGraphMini.gml
+$outFile = ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='preview'; showNodeLabels=$true}
+  @{op='colorNodesBy'; column='color'; mode='value'; }
+  @{op='layouts'; values=@(
+    @{name='RandomLayout'; 'Space size'=200; }
+  )}
+  @{op='export';file=$outFile; resolution=@(320,240)}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+start $outFile
+```
+![colored](https://github.com/user-attachments/assets/1a41870c-13f8-4bdc-9ee9-66a52b9b6d6a)
 
 ## Color nodes by community (Modularity)
 
@@ -150,7 +200,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 @(
   @{op='import'; file=$graphFile.FullName }
   @{op='statistics';values=@('Modularity') }
-  @{op='colorNodesBy';column='modularity_class'}
+  @{op='colorNodesBy';column='modularity_class'; mode='partition'}
   @{op='layouts'; values=@(
     @{name='ForceAtlas2'; 'LinLog mode'=$true; steps=200}
   )}
@@ -187,7 +237,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 @(
   @{op='import'; file=$graphFile.FullName }
   @{op='statistics';values=@('Modularity') }
-  @{op='colorNodesBy';column='modularity_class'}
+  @{op='colorNodesBy';column='modularity_class' mode='partition'}
   @{op='layouts'; values=@(
   @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.1; Scaling=20; steps=40; exportEach=1;
    export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true
