@@ -38,7 +38,7 @@ $outFile = 'dolphins.png'
 
 ## Download sample GML graphs
 
-Graphs used in examples: dolphins and football.
+Graphs used in examples: dolphins, football, polblogs.
 
 Examples below will work as-is if these graphs are somewhere in current directory.
 
@@ -73,26 +73,6 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ```
 ![football](https://github.com/user-attachments/assets/c6424a45-e9ca-4e95-b99f-b867f2c6df76)
 
-## Color nodes by community (Modularity)
-
-Applying statistics=Modularity creates a nodes column with id=modularity_class which we can use to color nodes later.
-
-```powershell
-$graphFile = get-childitem -recurse football.gml
-$dir = $graphFile.Directory
-$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
-
-@(
-  @{op='import'; file=$graphFile.FullName }
-  @{op='statistics';values=@('Modularity') }
-  @{op='colorNodesBy';column='modularity_class'}
-  @{op='layouts'; values=@(
-    @{name='ForceAtlas2'; 'LinLog mode'=$true; steps=200}
-  )}
-  @{op='export';file=$outFile; }
-) | ConvertTo-Json -d 9 | java -jar $gephiCommander
-```
-![football](https://github.com/user-attachments/assets/860fe61c-9c49-40a1-81e8-089c80d5545c)
 
 ## Color nodes by numeric column (Ranking)
 
@@ -133,6 +113,51 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander
 ```
 ![football](https://github.com/user-attachments/assets/b0ce5009-7ca9-4525-add5-afa08b834d4b)
+
+## Color nodes by String column (Partitioning)
+
+Don't specify colors for the **colorNodesBy** and nodes will be colored in **Partition** mode: all nodes with the same value in provided property will have the same color, colors will be chosen automatically.
+I.e. all nodes in polblogs.gml have a **value** property, which is either 0 or 1. Therefore there will be only two colors:
+
+```powershell
+$graphFile = get-childitem -recurse polblogs.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='filters';values=@(
+    @{name='GiantComponent'}
+  )}
+  @{op='colorNodesBy'; column='value'; }
+  @{op='layouts'; values=@(
+    @{name='ForceAtlas2'; steps=200 }
+  )}
+  @{op='export';file=$outFile; resolution=@(320,240)}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+```
+![polblogs](https://github.com/user-attachments/assets/b7c9b7c8-7cc4-41dd-8030-1811fef98340)
+
+## Color nodes by community (Modularity)
+
+Applying statistics=Modularity creates a nodes column with id=modularity_class which we can use to color nodes later.
+
+```powershell
+$graphFile = get-childitem -recurse football.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='statistics';values=@('Modularity') }
+  @{op='colorNodesBy';column='modularity_class'}
+  @{op='layouts'; values=@(
+    @{name='ForceAtlas2'; 'LinLog mode'=$true; steps=200}
+  )}
+  @{op='export';file=$outFile; }
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+```
+![football](https://github.com/user-attachments/assets/860fe61c-9c49-40a1-81e8-089c80d5545c)
 
 ## Create GIF
 ```powershell
