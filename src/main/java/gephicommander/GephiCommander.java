@@ -1002,7 +1002,9 @@ public class GephiCommander {
             Mode mode = Mode.valueOf(edgeColorEl.getAsString().toUpperCase());
             model.getProperties().putValue(PreviewProperty.EDGE_COLOR, new EdgeColor(mode));
         } else {
-            model.getProperties().putValue(PreviewProperty.EDGE_COLOR, new DependantOriginalColor(Color.WHITE));
+            // when no Preview op
+            // DependantOriginalColor cannot be cast to class org.gephi.preview.types.EdgeColor
+            //model.getProperties().putValue(PreviewProperty.EDGE_COLOR, new DependantOriginalColor(Color.WHITE));
         }
 
 
@@ -1063,12 +1065,8 @@ public class GephiCommander {
                 }
                 ec.exportFile(outFile, graphExporter);
 
-            } else if (extension.equals("png") &&
-                options.has("resolution")) {
+            } else if (extension.equals("png")) {
                 
-                var res = options.getAsJsonArray("resolution");
-                int x = res.get(0).getAsInt();
-                int y = res.size() == 2 ? res.get(1).getAsInt() : x;
 
 
                 PNGExporter pngExporter = null;
@@ -1080,8 +1078,13 @@ public class GephiCommander {
                 }
                 
                 pngExporter.setWorkspace(workspace);
-                pngExporter.setWidth(x);
-                pngExporter.setHeight(y);
+                if (options.has("resolution")) {
+                    var res = options.getAsJsonArray("resolution");
+                    int x = res.get(0).getAsInt();
+                    int y = res.size() == 2 ? res.get(1).getAsInt() : x;
+                    pngExporter.setWidth(x);
+                    pngExporter.setHeight(y);
+                }
                 pngExporter.setMargin(0);
                 ec.exportFile(outFile, pngExporter);
             } else {
@@ -1186,7 +1189,6 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
         if (options.has("translateY")) {
             translateYExpr = options.get("translateY").getAsString();
         }
-        // System.out.println("MyPNGExporter object created");
         if (options.has("findNode")) {
             var jsonPrim = options.get("findNode").getAsJsonPrimitive();
             if (jsonPrim.isString()) {
@@ -1196,8 +1198,10 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
             }
             System.out.println("found node: "+node);
         }
-        
-        
+        if (options.has("transparentBg") && 
+            options.get("transparentBg").getAsBoolean()) {
+            this.setTransparentBackground(true);
+        }
     }
 
     @Override
@@ -1351,13 +1355,18 @@ class MyPNGExporter extends PNGExporter implements VectorExporter, ByteExporter,
                 var newRect = originalToDrawingCoords(origRect);
                 srcGraphics.drawRect((int)newRect.getX(), (int)newRect.getY(), (int)newRect.getWidth(),(int)newRect.getHeight());
             }
-            srcGraphics.setColor(Color.GRAY);
-            // srcGraphics.drawLine(width/2, height/2, (int)pointTr.x, (int)pointTr.y);
-            // srcGraphics.fillOval(0, 0, width/100, height/100);
-            var str = String.format("sc=%s\ntr=%s",target.getScaling(),target.getTranslate());
-            var font = srcGraphics.getFont().deriveFont(32f);
-            srcGraphics.setFont(font);
-            srcGraphics.drawString(str,0,(int)(height*0.95));
+
+            if (options.has("drawDebug") &&
+                options.get("drawDebug").getAsBoolean() 
+                ) {
+                srcGraphics.setColor(Color.GRAY);
+                // srcGraphics.drawLine(width/2, height/2, (int)pointTr.x, (int)pointTr.y);
+                // srcGraphics.fillOval(0, 0, width/100, height/100);
+                var str = String.format("sc=%s\ntr=%s",target.getScaling(),target.getTranslate());
+                var font = srcGraphics.getFont().deriveFont(32f);
+                srcGraphics.setFont(font);
+                srcGraphics.drawString(str,0,(int)(height*0.95));
+            }
 
             
             
