@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import org.gephi.appearance.api.AppearanceController;
 import org.gephi.appearance.api.AppearanceModel;
@@ -24,6 +26,7 @@ import org.gephi.appearance.api.Function;
 import org.gephi.appearance.api.Partition;
 import org.gephi.appearance.api.PartitionFunction;
 import org.gephi.appearance.plugin.PartitionElementColorTransformer;
+import org.gephi.appearance.plugin.RankingElementColorTransformer;
 import org.gephi.appearance.plugin.RankingNodeSizeTransformer;
 import org.gephi.appearance.plugin.palette.Palette;
 import org.gephi.appearance.plugin.palette.PaletteManager;
@@ -115,10 +118,10 @@ public class GephiCommander {
                     setGraphPreview(op);
                     break;
                 case "colorNodesBy":
-                    colorNodesByColumn(op.get("columnName").getAsString());
+                    colorNodesByColumn(op);
                     break;
                 case "colorEdgesBy":
-                    colorEdgesByColumn(op.get("columnName").getAsString());
+                    colorEdgesByColumn(op.get("column").getAsString());
                     break;
                 case "sizeNodesBy":
                     sizeNodesByColumn(op);
@@ -894,20 +897,14 @@ public class GephiCommander {
             throw new IllegalStateException(msg);
         }
     }
-    
+
     private static void sizeNodesByColumn(JsonObject rankingOptions) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         var appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
         AppearanceModel appearanceModel = appearanceController.getModel();
         
-        Column column = null;
         String desiredColumn = rankingOptions.get("column").getAsString();
-        switch (desiredColumn) {
-            case "degree" : {column = graphModel.defaultColumns().degree(); break;}
-            case "inDegree" : {column = graphModel.defaultColumns().inDegree(); break;}
-            case "outDegree" : {column = graphModel.defaultColumns().outDegree(); break;}
-            default : {column = graphModel.getNodeTable().getColumn(desiredColumn); break;}
-        }
+        Column column = getNodeColumnIncludingDefault(graphModel,desiredColumn);
         
         Function columnRanking = appearanceModel.getNodeFunction(column, 
             RankingNodeSizeTransformer.class);
@@ -922,18 +919,71 @@ public class GephiCommander {
 
         appearanceController.transform(columnRanking);
     }
-    private static void colorNodesByColumn(String columnName) {
+
+    private static Column getNodeColumnIncludingDefault(GraphModel graphModel, String desiredColumn) {
+        Column column = null;
+        switch (desiredColumn) {
+            case "degree" : {column = graphModel.defaultColumns().degree(); break;}
+            case "inDegree" : {column = graphModel.defaultColumns().inDegree(); break;}
+            case "outDegree" : {column = graphModel.defaultColumns().outDegree(); break;}
+            default : {column = graphModel.getNodeTable().getColumn(desiredColumn); break;}
+        }
+        return column;
+    }
+    private static void colorNodesByColumn(JsonObject options) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
         AppearanceModel appearanceModel = appearanceController.getModel();
         DirectedGraph graph = graphModel.getDirectedGraph();
 
-        Column column = graphModel.getNodeTable().getColumn(columnName);
-        Function func = appearanceModel.getNodeFunction(column, PartitionElementColorTransformer.class);
-        Partition partition = ((PartitionFunction) func).getPartition();
-        Palette palette = PaletteManager.getInstance().generatePalette(partition.size(graph));
-        partition.setColors(graph, palette.getColors());
-        appearanceController.transform(func);
+        Column column = getNodeColumnIncludingDefault(graphModel, options.get("column").getAsString());
+        
+        Function transformingFunction = null;
+        if (options.has("colors")) {
+            var spliter = options.get("colors").getAsJsonArray().spliterator();
+            List<Color> colors = StreamSupport.stream(spliter,false)
+                .map(JsonElement::getAsString)
+                .map(ImportUtils::parseColor)
+                .collect(Collectors.toList());
+            
+            List<Float> colorPositions = new ArrayList<Float>();
+            if (options.has("colorPositions")) {
+                var spliterPos = options.get("colorPositions").getAsJsonArray().spliterator();
+                colorPositions = StreamSupport.stream(spliterPos,false)
+                    .map(JsonElement::getAsFloat)
+                    .collect(Collectors.toList());
+            }
+            if ((colorPositions.size() != 0) && 
+                (colors.size() != colorPositions.size())
+                ) {
+                var msg = "colorPositions.count should be either same as colors.count or 0";
+                throw new IllegalArgumentException(msg);
+            }
+            if (colorPositions.size() == 0) {
+                for (int i = 0; i < colors.size(); i++) {
+                    colorPositions.add(1.0f/(colors.size()-1)*i);
+                }
+            }
+            System.out.println("colorPositions="+colorPositions);
+            float[] colorPositionsPrim = new float[colorPositions.size()];
+            int i = 0;
+            for (Float x : colorPositions) {
+                colorPositionsPrim[i++] = x;
+            }
+
+            transformingFunction = appearanceModel.getNodeFunction(column, RankingElementColorTransformer.class);
+            RankingElementColorTransformer transformer = transformingFunction.getTransformer();
+            transformer.setColors(colors.toArray(new Color[0]));
+            transformer.setColorPositions(colorPositionsPrim);
+        } else {
+            transformingFunction = appearanceModel.getNodeFunction(column, PartitionElementColorTransformer.class);
+            Partition partition = ((PartitionFunction) transformingFunction).getPartition();
+            Palette palette = PaletteManager.getInstance().generatePalette(partition.size(graph));
+            partition.setColors(graph, palette.getColors());
+        }
+
+        
+        appearanceController.transform(transformingFunction);
 
     }
     private static void colorEdgesByColumn(String columnName) {
