@@ -53,6 +53,27 @@ $html | Select-String '([^"]*?\.zip)\"' -allmatches | % Matches | % {$_.groups[1
 Get-ChildItem *.zip | % {Expand-Archive $_ -Force}
 ```
 
+### Color nodes by community (Modularity)
+
+Applying statistics=Modularity creates a nodes column with id=modularity_class which we can use to color nodes later.
+
+```powershell
+$graphFile = get-childitem -recurse football.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='statistics';values=@('Modularity') }
+  @{op='colorNodesBy';columnName='modularity_class'}
+  @{op='layouts'; values=@(
+    @{name='ForceAtlas2'; 'LinLog mode'=$true; steps=200}
+  )}
+  @{op='export';file=$outFile; }
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+```
+![football](https://github.com/user-attachments/assets/860fe61c-9c49-40a1-81e8-089c80d5545c)
+
 ### Create GIF
 ```powershell
 $magickExe = 'C:\Program Files\ImageMagick-7.1.0-Q16-HDRI\magick.exe'
@@ -95,3 +116,25 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ```
 <img src="https://github.com/user-attachments/assets/d3fee647-247d-459c-afbf-42648440789a" width="240"/>
 
+### Follow a node
+
+Put a node id into findNode and reference it in translateX/Y expressions:
+```powershell
+$graphFile = get-childitem -recurse football.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='preview'; showNodeLabels=$true}
+  @{op='layouts'; values=@(
+  @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.01; Scaling=20; steps=40; exportEach=1;
+   export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true;
+    PNGExporter=@{ scaling="1"; translateX="-(nodeX*sc+w/2*(1-sc) -w/2 )/sc"; translateY="-(-nodeY*sc+h/2*(1-sc) -h/2 )/sc"; findNode="23"}
+   }
+  }
+)}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+
+& $magickExe -delay 0 -loop 0 "$dir\*.png" "$dir\output.gif"
+```
+![output](https://github.com/user-attachments/assets/77f5884b-eeee-4c6a-bd62-675fa6763d31)
