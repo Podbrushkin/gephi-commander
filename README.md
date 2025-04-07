@@ -12,7 +12,7 @@ $outFile = 'dolphins.png'
     @{name='ForceAtlas2'; steps=200}
   )}
   @{op='export';file=$outFile}
-) | ConvertTo-Json -d 9 | java -jar .\target\gephi-commander-0.1.jar
+) | ConvertTo-Json -d 9 | java -jar .\target\gephi-commander-0.1.jar -
 ```
 ```json
 [
@@ -273,3 +273,17 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 & $magickExe -delay 0 -loop 0 "$dir\*.png" "$dir\output.gif"
 ```
 ![output](https://github.com/user-attachments/assets/77f5884b-eeee-4c6a-bd62-675fa6763d31)
+
+## Live preview
+
+It will display a window where you can examine appearance of your graph. Avoid it when perfomance is needed.
+
+```powershell
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='livePreview'; fps=30}
+  @{op='layouts'; values=@(
+    @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.001; 'LinLog mode'=$true; steps=[int]::MaxValue }
+  )}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+```

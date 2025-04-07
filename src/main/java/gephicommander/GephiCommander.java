@@ -1,7 +1,12 @@
 package gephicommander;
 
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.FileReader;
@@ -19,8 +24,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
+
+import javax.swing.JFrame;
+import javax.swing.Timer;
 
 import org.gephi.appearance.api.AppearanceController;
 import org.gephi.appearance.api.AppearanceModel;
@@ -70,9 +77,11 @@ import org.gephi.layout.plugin.random.Random;
 import org.gephi.layout.plugin.random.RandomLayout;
 import org.gephi.layout.spi.Layout;
 import org.gephi.layout.spi.LayoutProperty;
+import org.gephi.preview.api.G2DTarget;
 import org.gephi.preview.api.PreviewController;
 import org.gephi.preview.api.PreviewModel;
 import org.gephi.preview.api.PreviewProperty;
+import org.gephi.preview.api.RenderTarget;
 import org.gephi.preview.types.DependantColor;
 import org.gephi.preview.types.DependantOriginalColor;
 import org.gephi.preview.types.EdgeColor;
@@ -81,6 +90,7 @@ import org.gephi.project.api.ProjectController;
 import org.gephi.project.api.Workspace;
 import org.gephi.statistics.plugin.ConnectedComponents;
 import org.gephi.statistics.plugin.Modularity;
+import org.gephi.toolkit.demos.plugins.preview.PreviewSketch;
 import org.openide.nodes.Node.Property;
 import org.openide.util.Lookup;
 
@@ -89,7 +99,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-//https://github.com/KiranGershenfeld/VisualizingTwitchCommunities/blob/AutoAtlasGeneration/AtlasGeneration/Java/App.java
 public class GephiCommander {
     
     public static void main(String[] args) {
@@ -120,6 +129,9 @@ public class GephiCommander {
                 case "filters":
                     applyFilters(op.get("values").getAsJsonArray());
                     break;
+                case "livePreview":
+                    showLivePreview(op);
+                    break;
                 case "layouts":
                     applyLayouts(op.get("values").getAsJsonArray());
                     break;
@@ -149,6 +161,48 @@ public class GephiCommander {
         
     }
     
+    private static void showLivePreview(JsonObject op) {
+        PreviewController previewController = Lookup.getDefault().lookup(PreviewController.class);
+        G2DTarget target = (G2DTarget) previewController.getRenderTarget(RenderTarget.G2D_TARGET);
+        PreviewSketch previewSketch = new PreviewSketch(target);
+        previewController.refreshPreview();
+        //Add the applet to a JFrame and display
+        JFrame frame = new JFrame("Preview JFrame");
+        frame.setLayout(new BorderLayout());
+
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.add(previewSketch, BorderLayout.CENTER);
+        frame.setSize(1024, 768);
+        
+        //Wait for the frame to be visible before painting, or the result drawing will be strange
+        frame.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentShown(ComponentEvent e) {
+                previewSketch.resetZoom();
+            }
+        });
+        
+        int fps = op.has("fps") ? op.get("fps").getAsInt() : 30;
+        int delay = op.has("delayMillis") ? op.get("delayMillis").getAsInt() : (int)(1.0/fps*1000);
+
+        var refreshTimer = new Timer(delay, e -> {
+            previewController.refreshPreview();
+            previewSketch.refreshSketch();
+        });
+        refreshTimer.start();
+        
+        frame.setVisible(true);
+        
+        // Stop timer when window closes
+        frame.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosed(WindowEvent e) {
+                refreshTimer.stop();
+            }
+        });
+
+    }
+
     private static void printCounts(Graph graph) {
         System.out.println("Nodes: " + graph.getNodeCount() + " Edges: " + graph.getEdgeCount());
     }
