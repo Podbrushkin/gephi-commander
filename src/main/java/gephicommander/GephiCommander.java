@@ -1104,6 +1104,8 @@ public class GephiCommander {
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_OPACITY, 40);
         model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_COLOR, new DependantColor(Color.BLACK));
         
+        model.getProperties().putValue(NodeDistributionRenderer.ENABLE_DISTRIBUTION_BOX, true);
+        
         if (previewOptions.has("edgeRescaleWeight")) {
             var obj = previewOptions.get("edgeRescaleWeight").getAsJsonObject();
             model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT, Boolean.TRUE);

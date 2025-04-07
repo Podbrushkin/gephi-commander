@@ -265,11 +265,11 @@ class MyPNGExporter extends PNGExporter {
         return !cancel;
     }
 
-    public Rectangle2D.Float originalToDrawingCoords(float minX, float maxY, float graphWidth, float graphHeight) {
+    /* public Rectangle2D.Float originalToDrawingCoords(float minX, float maxY, float graphWidth, float graphHeight) {
         return originalToDrawingCoords(new Rectangle2D.Float(
             minX,maxY,graphWidth,graphHeight
         ));
-    }
+    } */
     
     /* private Point2D.Float scaleToDrawingCoord(Point2D.Float point) {
         float scaling = target.getScaling();
