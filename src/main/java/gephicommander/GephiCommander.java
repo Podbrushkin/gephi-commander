@@ -4,8 +4,10 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.lang.reflect.InvocationTargetException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -91,11 +93,18 @@ import com.google.gson.JsonParser;
 public class GephiCommander {
     
     public static void main(String[] args) {
-        var options = JsonParser.parseReader(new InputStreamReader(System.in)).getAsJsonArray();
+        JsonArray options = null;
+        try (Reader reader = args[args.length-1].equals("-") ?
+                new InputStreamReader(System.in) :
+                new FileReader(args[0])) {
+                    options = JsonParser.parseReader(reader).getAsJsonArray();
+        } catch (Exception e) {
+            System.err.println("Last arg should be a filepath or '-' to read from stdin.");
+            e.printStackTrace();
+            System.exit(1);
+        }
+
         Locale.setDefault(Locale.ENGLISH);  // Ignore Gephi localization
-        // System.out.println(options.toString());
-        // System.out.println(options.keySet());
-        
 
         for (var opEl : options) {
             var op = opEl.getAsJsonObject();
@@ -1003,7 +1012,7 @@ public class GephiCommander {
                 break;
             }
             default : {
-                String msg = "Allowed color modes are: ranking, partition, value";
+                String msg = "Bad color mode. Expected: ranking|partition|value. Got: "+mode;
                 throw new IllegalArgumentException(msg);
             }
         }

@@ -69,7 +69,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
     @{name='ForceAtlas2'; 'LinLog mode'=$true; steps=50}
   )}
   @{op='export';file=$outFile; resolution=@(320,240); }
-) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 ```
 ![football](https://github.com/user-attachments/assets/c6424a45-e9ca-4e95-b99f-b867f2c6df76)
 
@@ -90,7 +90,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
     @{name='ForceAtlas2'; 'LinLog mode'=$true; steps=200}
   )}
   @{op='export';file=$outFile; resolution=@(320,240)}
-) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 ```
 ![football](https://github.com/user-attachments/assets/3c91b5bc-5697-46c0-a698-fed3eb7931a8)
 
@@ -110,7 +110,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
     @{name='ForceAtlas2'; 'LinLog mode'=$true; steps=100}
   )}
   @{op='export';file=$outFile; resolution=@(320,240)}
-) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 ```
 ![football](https://github.com/user-attachments/assets/b0ce5009-7ca9-4525-add5-afa08b834d4b)
 
@@ -134,7 +134,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
     @{name='ForceAtlas2'; steps=200 }
   )}
   @{op='export';file=$outFile; resolution=@(320,240)}
-) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 ```
 ![polblogs](https://github.com/user-attachments/assets/b7c9b7c8-7cc4-41dd-8030-1811fef98340)
 
@@ -183,7 +183,7 @@ $outFile = ($graphFile.BaseName+'.png')
     @{name='RandomLayout'; 'Space size'=200; }
   )}
   @{op='export';file=$outFile; resolution=@(320,240)}
-) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 start $outFile
 ```
 ![colored](https://github.com/user-attachments/assets/1a41870c-13f8-4bdc-9ee9-66a52b9b6d6a)
@@ -205,7 +205,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
     @{name='ForceAtlas2'; 'LinLog mode'=$true; steps=200}
   )}
   @{op='export';file=$outFile; }
-) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 ```
 ![football](https://github.com/user-attachments/assets/860fe61c-9c49-40a1-81e8-089c80d5545c)
 
@@ -223,7 +223,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
    export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true}
   }
 )}
-) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
 & $magickExe -delay 0 -loop 0 "$dir\*.png" "$dir\output.gif"
 ```
@@ -237,7 +237,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 @(
   @{op='import'; file=$graphFile.FullName }
   @{op='statistics';values=@('Modularity') }
-  @{op='colorNodesBy';column='modularity_class' mode='partition'}
+  @{op='colorNodesBy';column='modularity_class'; mode='partition'}
   @{op='layouts'; values=@(
   @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.1; Scaling=20; steps=40; exportEach=1;
    export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true
@@ -245,7 +245,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
    }
   }
 )}
-) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
 & $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" "$dir\output.gif"
 ```
@@ -268,7 +268,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
    }
   }
 )}
-) | ConvertTo-Json -d 9 | java -jar $gephiCommander
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
 & $magickExe -delay 0 -loop 0 "$dir\*.png" "$dir\output.gif"
 ```
