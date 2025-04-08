@@ -148,7 +148,7 @@ public class GephiCommander {
                     colorNodesByColumn(op);
                     break;
                 case "colorEdgesBy":
-                    colorEdgesByColumn(op.get("column").getAsString());
+                    colorEdgesByColumn(op);
                     break;
                 case "sizeNodesBy":
                     sizeNodesByColumn(op);
@@ -399,9 +399,6 @@ public class GephiCommander {
                     System.out.println("Nodes: " + graphVis.getNodeCount() + " Edges: " + graphVis.getEdgeCount());
                     break;
                 case "nodeColumns":
-                    // var attrs = graphModel.getGraphVisible().getNodes().iterator().next().getAttributes();
-
-                    // System.out.println(Arrays.toString(attrs));
                     System.out.println("Node columns:");
                     System.out.println("id\ttitle\ttype");
                     for (var col : graphModel.getNodeTable()) {
@@ -1109,7 +1106,88 @@ public class GephiCommander {
             }
         }
     }
-    private static void colorEdgesByColumn(String columnName) {
+    private static void colorEdgesByColumn(JsonObject options) {
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
+        AppearanceModel appearanceModel = appearanceController.getModel();
+        DirectedGraph graph = graphModel.getDirectedGraph();
+
+        Column column = graphModel.getEdgeTable().getColumn(options.get("column").getAsString());
+        // graphModel.getEdgeTable().
+        String mode = options.get("mode").getAsString().toLowerCase();
+
+        switch (mode) {
+            case "ranking" : {
+                List<Color> colors = List.of(Color.BLUE, Color.YELLOW, Color.RED);
+                if (options.has("colors")) {
+                    var spliter = options.get("colors").getAsJsonArray().spliterator();
+                    colors = StreamSupport.stream(spliter,false)
+                        .map(JsonElement::getAsString)
+                        .map(GephiCommander::parseColor)
+                        .collect(Collectors.toList());
+                }
+                
+                List<Float> colorPositions = new ArrayList<Float>();
+                if (options.has("colorPositions")) {
+                    var spliterPos = options.get("colorPositions").getAsJsonArray().spliterator();
+                    colorPositions = StreamSupport.stream(spliterPos,false)
+                        .map(JsonElement::getAsFloat)
+                        .collect(Collectors.toList());
+                }
+                if ((colorPositions.size() != 0) && 
+                    (colors.size() != colorPositions.size())
+                    ) {
+                    var msg = "colorPositions.count should be either same as colors.count or 0";
+                    throw new IllegalArgumentException(msg);
+                }
+                if (colorPositions.size() == 0) {
+                    for (int i = 0; i < colors.size(); i++) {
+                        colorPositions.add(1.0f/(colors.size()-1)*i);
+                    }
+                }
+                System.out.println("colorPositions="+colorPositions);
+                float[] colorPositionsPrim = new float[colorPositions.size()];
+                int i = 0;
+                for (Float x : colorPositions) {
+                    colorPositionsPrim[i++] = x;
+                }
+                System.out.println(column);
+                Function transformingFunction = appearanceModel.getEdgeFunction(column, RankingElementColorTransformer.class);
+                RankingElementColorTransformer transformer = transformingFunction.getTransformer();
+                transformer.setColors(colors.toArray(new Color[0]));
+                transformer.setColorPositions(colorPositionsPrim);
+
+                appearanceController.transform(transformingFunction);
+                break;
+            } 
+            case "partition" : {
+                Function transformingFunction = appearanceModel.getEdgeFunction(column, PartitionElementColorTransformer.class);
+                Partition partition = ((PartitionFunction) transformingFunction).getPartition();
+                Palette palette = PaletteManager.getInstance().generatePalette(partition.size(graph));
+                partition.setColors(graph, palette.getColors());
+
+                appearanceController.transform(transformingFunction);
+                break;
+            } 
+            case "value" : {
+                for (var edge : graphModel.getDirectedGraph().getEdges()) {
+                    try {
+                        String colorValue = edge.getAttribute(column).toString();
+                        Color color = GephiCommander.parseColor(colorValue);
+                        if (color != null) {
+                            edge.setColor(color);
+                        }
+                    } catch (Exception e) {}
+                }
+                break;
+            }
+            default : {
+                String msg = "Bad color mode. Expected: ranking|partition|value. Got: "+mode;
+                throw new IllegalArgumentException(msg);
+            }
+        }
+    }
+    /* private static void colorEdgesByColumn(String columnName) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
         AppearanceModel appearanceModel = appearanceController.getModel();
@@ -1121,7 +1199,7 @@ public class GephiCommander {
         Palette palette = PaletteManager.getInstance().generatePalette(partition.size(graph));
         partition.setColors(graph, palette.getColors());
         appearanceController.transform(func);
-    }
+    } */
 
     
     public static void setGraphPreview(JsonObject options) {
@@ -1194,6 +1272,9 @@ public class GephiCommander {
             } else if (expectedType == DependantOriginalColor.class) {
                 var color = GephiCommander.parseColor(valueElement.getAsString());
                 value = new DependantOriginalColor(color);
+            } else if (expectedType == DependantColor.class) {
+                var color = GephiCommander.parseColor(valueElement.getAsString());
+                value = new DependantColor(color);
             } else if (expectedType == EdgeColor.class) {
                 var val = valueElement.getAsString();
                 if (List.of("SOURCE", "TARGET", "MIXED", "ORIGINAL").contains(val) ) {
