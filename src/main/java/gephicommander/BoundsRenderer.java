@@ -23,10 +23,10 @@ import org.openide.util.NbBundle;
 import org.openide.util.lookup.ServiceProvider;
 
 @ServiceProvider(service = Renderer.class, position = 10)
-public class NodeDistributionRenderer implements Renderer {
+public class BoundsRenderer implements Renderer {
 
-    public static final String ENABLE_DISTRIBUTION_BOX = "node.distribution.enable";
-    public static final String BOX_COLOR = "node.distribution.color";
+    public static final String ENABLE_DISTRIBUTION_BOX = "bounds.show";
+    public static final String BOX_COLOR = "bounds.color";
     
     private float minX = Float.MAX_VALUE;
     private float maxX = Float.MIN_VALUE;
@@ -37,7 +37,7 @@ public class NodeDistributionRenderer implements Renderer {
 
     @Override
     public String getDisplayName() {
-        return NbBundle.getMessage(NodeDistributionRenderer.class, "NodeDistributionRenderer.name");
+        return NbBundle.getMessage(BoundsRenderer.class, "BoundsRenderer.name");
     }
 
     @Override
@@ -112,14 +112,17 @@ public class NodeDistributionRenderer implements Renderer {
 
         final float width = (maxX - minX)/100*xPercentile;
         final float height = (maxY - minY)/100*yPercentile;
+        
+        float x = minX/100*xPercentile;
+        float y = -maxY/100*yPercentile;
         g2.draw(new Rectangle2D.Float(
-            minX/100*xPercentile, 
-            -maxY/100*yPercentile, 
+            x, 
+            y, 
             width, 
             height
         ));
-
-
+        String s = ""+xPercentile+"% "+yPercentile+"%";
+        g2.drawString(s, x, y);
     }
 
     @Override
@@ -128,7 +131,7 @@ public class NodeDistributionRenderer implements Renderer {
             PreviewProperty.createProperty(this, ENABLE_DISTRIBUTION_BOX, Boolean.class,
                 "Show node distribution box",
                 "Shows rectangle containing 90% of nodes",
-                PreviewProperty.CATEGORY_NODES).setValue(true),
+                PreviewProperty.CATEGORY_NODES).setValue(false),
             PreviewProperty.createProperty(this, BOX_COLOR, Color.class,
                 "Box color",
                 "Color of the distribution box",

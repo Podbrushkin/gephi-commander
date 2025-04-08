@@ -3,29 +3,35 @@ package gephicommander;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.Graphics2D;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.geom.Rectangle2D;
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
+import javax.imageio.ImageIO;
 import javax.swing.JFrame;
 import javax.swing.Timer;
 
@@ -167,15 +173,15 @@ public class GephiCommander {
         PreviewSketch previewSketch = new PreviewSketch(target);
         previewController.refreshPreview();
         //Add the applet to a JFrame and display
-        JFrame frame = new JFrame("Preview JFrame");
-        frame.setLayout(new BorderLayout());
+        JFrame jframe = new JFrame("Preview JFrame");
+        jframe.setLayout(new BorderLayout());
 
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.add(previewSketch, BorderLayout.CENTER);
-        frame.setSize(1024, 768);
+        jframe.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        jframe.add(previewSketch, BorderLayout.CENTER);
+        jframe.setSize(1024, 768);
         
         //Wait for the frame to be visible before painting, or the result drawing will be strange
-        frame.addComponentListener(new ComponentAdapter() {
+        jframe.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentShown(ComponentEvent e) {
                 previewSketch.resetZoom();
@@ -185,22 +191,54 @@ public class GephiCommander {
         int fps = op.has("fps") ? op.get("fps").getAsInt() : 30;
         int delay = op.has("delayMillis") ? op.get("delayMillis").getAsInt() : (int)(1.0/fps*1000);
 
+        boolean doSaveFrames = op.has("saveFrames") && op.get("saveFrames").getAsBoolean();
+        final List<BufferedImage> frames = new ArrayList<>();
         var refreshTimer = new Timer(delay, e -> {
             previewController.refreshPreview();
             previewSketch.refreshSketch();
+
+            if (doSaveFrames) {
+                BufferedImage frame = new BufferedImage(
+                    previewSketch.getWidth(), 
+                    previewSketch.getHeight(), 
+                    BufferedImage.TYPE_INT_RGB);
+                Graphics2D g2d = frame.createGraphics();
+                previewSketch.paint(g2d);
+                g2d.dispose();
+                frames.add(frame);
+            }
         });
         refreshTimer.start();
         
-        frame.setVisible(true);
+        jframe.setVisible(true);
         
-        // Stop timer when window closes
-        frame.addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosed(WindowEvent e) {
-                refreshTimer.stop();
+        if (doSaveFrames) {
+            Runtime.getRuntime().addShutdownHook(new Thread() {
+                @Override
+                public void run() {
+                    System.out.println("frames.size()="+frames.size());
+                    saveFramesAsPNGs(frames);
+                }
+                
+            });
+        }
+    }
+    private static void saveFramesAsPNGs(List<BufferedImage> frames) {
+        System.out.println("__frames.size()="+frames.size());
+        File outputDir = new File("frames");
+        outputDir.mkdirs();
+        
+        for(int i = 0; i < frames.size(); i++) {
+            try {
+                ImageIO.write(frames.get(i), "png", 
+                    new File(outputDir, String.format("frame_%03d.png", i)));
+            } catch (IOException e) {
+                e.printStackTrace();
             }
-        });
-
+        }
+        System.out.println("images saved to "+outputDir);
+        // Then use FFmpeg to combine:
+        // ffmpeg -framerate 10 -i frame_%03d.png -c:v libx264 -r 30 -pix_fmt yuv420p out.mp4
     }
 
     private static void printCounts(Graph graph) {
@@ -1086,75 +1124,103 @@ public class GephiCommander {
     }
 
     
-    public static void setGraphPreview(JsonObject previewOptions) {
-        //Preview
+    public static void setGraphPreview(JsonObject options) {
         PreviewModel model = Lookup.getDefault().lookup(PreviewController.class).getModel();
-        //Node Label Properties
-        if (previewOptions.has("showNodeLabels")) {
-            boolean show = previewOptions.get("showNodeLabels").getAsBoolean();
-            model.getProperties().putValue(PreviewProperty.SHOW_NODE_LABELS, show);
-        }
-        
-        model.getProperties().putValue(PreviewProperty.NODE_LABEL_PROPORTIONAL_SIZE, Boolean.TRUE);
-        model.getProperties().putValue(PreviewProperty.NODE_LABEL_FONT, new Font("Arial", Font.PLAIN, 8));
+        var modelProps = model.getProperties();
 
-        model.getProperties().putValue(PreviewProperty.NODE_LABEL_COLOR, new DependantOriginalColor(Color.WHITE));
+        // Don't do anything if not asked to
+        if (options.has("usePreset") && 
+            options.get("usePreset").getAsBoolean()) {
 
-        model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_SIZE, 4.0f);
-        model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_OPACITY, 40);
-        model.getProperties().putValue(PreviewProperty.NODE_LABEL_OUTLINE_COLOR, new DependantColor(Color.BLACK));
+                modelProps.putValue(PreviewProperty.NODE_LABEL_PROPORTIONAL_SIZE, Boolean.TRUE);
+                modelProps.putValue(PreviewProperty.NODE_LABEL_FONT, new Font("Arial", Font.PLAIN, 8));
+                modelProps.putValue(PreviewProperty.NODE_LABEL_COLOR, new DependantOriginalColor(Color.WHITE));
         
-        model.getProperties().putValue(NodeDistributionRenderer.ENABLE_DISTRIBUTION_BOX, true);
-        
-        if (previewOptions.has("edgeRescaleWeight")) {
-            var obj = previewOptions.get("edgeRescaleWeight").getAsJsonObject();
-            model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT, Boolean.TRUE);
-            if (obj.has("min")) {
-                var min = obj.get("min").getAsInt();
-                model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT_MIN, min);
-                
-            }
-            if (obj.has("max")) {
-                var max = obj.get("max").getAsInt();
-                model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT_MAX, max);
-                
-            }
-        }
-        
-        
-        //Edge Properties
-        model.getProperties().putValue(PreviewProperty.SHOW_EDGES, Boolean.TRUE);
-        
-        var edgeColorEl = previewOptions.get("edgeColor");
-        if (edgeColorEl != null) {
-            Mode mode = Mode.valueOf(edgeColorEl.getAsString().toUpperCase());
-            model.getProperties().putValue(PreviewProperty.EDGE_COLOR, new EdgeColor(mode));
-        } else {
-            // when no Preview op
-            // DependantOriginalColor cannot be cast to class org.gephi.preview.types.EdgeColor
-            //model.getProperties().putValue(PreviewProperty.EDGE_COLOR, new DependantOriginalColor(Color.WHITE));
+                modelProps.putValue(PreviewProperty.NODE_LABEL_OUTLINE_SIZE, 4.0f);
+                modelProps.putValue(PreviewProperty.NODE_LABEL_OUTLINE_OPACITY, 40);
+                modelProps.putValue(PreviewProperty.NODE_LABEL_OUTLINE_COLOR, new DependantColor(Color.BLACK));
+                options.remove("usePreset");
         }
 
+        options.remove("op");
+        for (var entry : options.entrySet()) {
+            String key = entry.getKey();
+            String dotKey = convertCamelToDot(key);
+            
+            setPreviewProperty(model, dotKey, entry.getValue());
+        }
+    }
+    public static String convertCamelToDot(String str) {
+        return str.replaceAll("([a-z])([A-Z]+)", "$1\\.$2").toLowerCase();
+    }
+    
+    public static String convertDotToCamel(String str) {
+        return Pattern.compile("\\.([a-z])")
+                     .matcher(str)
+                     .replaceAll(mr -> mr.group(1).toUpperCase());
+    }
 
-        // model.getProperties().putValue(PreviewProperty.EDGE_COLOR, new EdgeColor(Mode.SOURCE));
-        // model.getProperties().putValue(PreviewProperty.EDGE_THICKNESS, 1.0);
-        // model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT, Boolean.TRUE);
-        // model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT_MIN, 1);
-        // model.getProperties().putValue(PreviewProperty.EDGE_RESCALE_WEIGHT_MAX, 20);
-        model.getProperties().putValue(PreviewProperty.EDGE_OPACITY, 60);
-        // model.getProperties().putValue(PreviewProperty.ARROW_SIZE, 5);
-        
-
-
-        //Image Properties
-        if (previewOptions.has("bgColor")) {
-            var colorName = previewOptions.get("bgColor").getAsString();
-            var color = GephiCommander.parseColor(colorName);
-            if (color != null) {
-                model.getProperties().putValue(PreviewProperty.BACKGROUND_COLOR, color);
+    private static void setPreviewProperty(PreviewModel model, String propertyKey, JsonElement valueElement) {
+        try {
+            PreviewProperty property = model.getProperties().getProperty(propertyKey);
+            Class<?> expectedType = null;
+            if (property == null) {
+                if (propertyKey.contains("color")) expectedType = Color.class;
+                else {
+                    String msg = "Property not found: " + propertyKey;
+                    throw new IllegalArgumentException(msg);
+                }
             } else {
-                System.out.println("Such color haven't been found: "+colorName);
+                // Get the expected type using reflection
+                Field typeField = PreviewProperty.class.getDeclaredField("type");
+                typeField.setAccessible(true);
+                expectedType = (Class<?>) typeField.get(property);
             }
+            
+            
+            
+            // Convert JSON value to the expected type
+            Object value;
+            if (expectedType == Boolean.class) {
+                value = valueElement.getAsBoolean();
+            } else if (expectedType == Float.class) {
+                value = valueElement.getAsFloat();
+            } else if (expectedType == Integer.class) {
+                value = valueElement.getAsInt();
+            } else if (expectedType == Color.class) {
+                value = GephiCommander.parseColor(valueElement.getAsString());
+            } else if (expectedType == String.class) {
+                value = valueElement.getAsString();
+            } else if (expectedType == DependantOriginalColor.class) {
+                var color = GephiCommander.parseColor(valueElement.getAsString());
+                value = new DependantOriginalColor(color);
+            } else if (expectedType == EdgeColor.class) {
+                var val = valueElement.getAsString();
+                if (List.of("SOURCE", "TARGET", "MIXED", "ORIGINAL").contains(val) ) {
+                    value = new EdgeColor(Mode.valueOf(val));
+                } else {
+                    var color = GephiCommander.parseColor(val);
+                    value = new EdgeColor(color);
+                }
+            } else {
+                String msg = "Unsupported type for property " + propertyKey + ": " + expectedType;
+                throw new IllegalArgumentException(msg);
+            }
+            
+            // Set the property value
+            model.getProperties().putValue(propertyKey, value);
+            
+        } catch (Exception e) {
+            System.out.println("Available properties:");
+            for (var prop : model.getProperties().getProperties()) {
+                String propLine = String.format("%s\t%s\t%s\t%s",
+                prop.getName(), prop.getType().getSimpleName(), 
+                prop.getValue(), prop.getDescription()
+                );
+                System.out.println(propLine);
+            }
+            String msg = "Error setting property " + propertyKey + ": " + e.getMessage();
+            throw new IllegalArgumentException(msg);
         }
     }
     private static void export(JsonObject options) {
@@ -1178,11 +1244,7 @@ public class GephiCommander {
         
         try {
             var exporter = ec.getExporter(extension);
-            /* if (exporter instanceof ExporterGEXF) {
-                ExporterGEXF graphExporter = (ExporterGEXF) exporter;
-                graphExporter.
-            } */
-        //    GexfExporter
+            
             if (exporter instanceof GraphExporter) {
                 GraphExporter graphExporter = (GraphExporter) exporter;
                 graphExporter.setWorkspace(workspace);

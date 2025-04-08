@@ -103,7 +103,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 
 @(
   @{op='import'; file=$graphFile.FullName }
-  @{op='colorNodesBy';column='value'; mode='ranking' colors=@('lightblue','lightgray','red');
+  @{op='colorNodesBy';column='value'; mode='ranking'; colors=@('lightblue','lightgray','red');
      colorPositions=@(0, 0.9, 1);
   }
   @{op='layouts'; values=@(
@@ -150,25 +150,33 @@ graph
   node
   [
     id 0
-    label Red
+    label "Red 0,0"
     color red
+    x 0
+    y 0
   ]
   node
   [
     id 1
-    label Green
+    label "Green 100,200"
     color #00FF00
+    x 100
+    y 200
   ]
   node
   [
     id 2
-    label "Blue"
+    label "Blue -100,100"
     color "rgb(0, 0, 255)"
+    x -100
+    y 100
   ]
   node
   [
     id 3
-    label "No color property"
+    label "No color property -100,-200"
+    x -100
+    y -200
   ]
 ]
 '@ > coloredGraphMini.gml
@@ -177,16 +185,12 @@ $outFile = ($graphFile.BaseName+'.png')
 
 @(
   @{op='import'; file=$graphFile.FullName }
-  @{op='preview'; showNodeLabels=$true}
+  @{op='preview'; nodeLabelShow=$true}
   @{op='colorNodesBy'; column='color'; mode='value'; }
-  @{op='layouts'; values=@(
-    @{name='RandomLayout'; 'Space size'=200; }
-  )}
   @{op='export';file=$outFile; resolution=@(320,240)}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
-start $outFile
 ```
-![colored](https://github.com/user-attachments/assets/1a41870c-13f8-4bdc-9ee9-66a52b9b6d6a)
+![coloredGraphMini](https://github.com/user-attachments/assets/ca81ac84-1ec5-43f2-9145-517b514b6edc)
 
 ## Color nodes by community (Modularity)
 
@@ -225,7 +229,8 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
-& $magickExe -delay 0 -loop 0 "$dir\*.png" "$dir\output.gif"
+$outFile = "$dir\output.gif"
+& $magickExe -delay 0 -loop 0 "$dir\*.png" $outFile
 ```
 ![output](https://github.com/user-attachments/assets/3f7601cc-c693-4656-984e-d48b3aaeffb7)
 
@@ -247,7 +252,8 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
-& $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" "$dir\output.gif"
+$outFile = "$dir\output.gif"
+& $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" $outFile
 ```
 <img src="https://github.com/user-attachments/assets/d3fee647-247d-459c-afbf-42648440789a" width="240"/>
 
@@ -260,7 +266,7 @@ $dir = $graphFile.Directory
 $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 @(
   @{op='import'; file=$graphFile.FullName }
-  @{op='preview'; showNodeLabels=$true}
+  @{op='preview'; nodeLabelShow=$true; }
   @{op='layouts'; values=@(
   @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.01; Scaling=20; steps=40; exportEach=1;
    export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true;
@@ -270,7 +276,8 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
-& $magickExe -delay 0 -loop 0 "$dir\*.png" "$dir\output.gif"
+$outFile = "$dir\output.gif"
+& $magickExe -delay 0 -loop 0 "$dir\*.png" $outFile
 ```
 ![output](https://github.com/user-attachments/assets/77f5884b-eeee-4c6a-bd62-675fa6763d31)
 
