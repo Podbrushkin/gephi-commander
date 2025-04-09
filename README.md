@@ -258,7 +258,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
   @{op='export';file=$outFile; resolution=@(640,480)}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 ```
-![sampleGraphMini](https://github.com/user-attachments/assets/88512aa0-69bf-4d54-8843-e56f8160ece4)
+<img src="https://github.com/user-attachments/assets/88512aa0-69bf-4d54-8843-e56f8160ece4" width="240"/>
 
 ## Color edges (Ranking mode)
 
@@ -281,7 +281,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
   @{op='export';file=$outFile; resolution=@(640,480)}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 ```
-![lesmis](https://github.com/user-attachments/assets/38e77de6-6aaf-4e7f-88a3-7280e62f0857)
+<img src="https://github.com/user-attachments/assets/38e77de6-6aaf-4e7f-88a3-7280e62f0857" width="240"/>
 
 You can specify your own colors and color positions:
 ```powershell
@@ -299,7 +299,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
   @{op='export';file=$outFile; resolution=@(640,480)}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 ```
-![lesmis](https://github.com/user-attachments/assets/193f6bb8-dee2-4797-b276-7e2c76aebb62)
+<img src="https://github.com/user-attachments/assets/193f6bb8-dee2-4797-b276-7e2c76aebb62" width="240"/>
 
 ## Color edges (Value mode)
 
