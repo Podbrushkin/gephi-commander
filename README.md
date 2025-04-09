@@ -38,7 +38,7 @@ $outFile = 'dolphins.png'
 
 ## Download sample GML graphs
 
-Graphs used in examples: dolphins, football, polblogs.
+Graphs used in examples: dolphins, football, polblogs, lesmis.
 
 Examples below will work as-is if these graphs are somewhere in current directory.
 
@@ -51,6 +51,71 @@ $html | Select-String '([^"]*?\.zip)\"' -allmatches | % Matches | % {$_.groups[1
 }
 
 Get-ChildItem *.zip | % {Expand-Archive $_ -Force}
+
+@'
+graph
+[
+  directed 1
+  node
+  [
+    id 0
+    label "Red 0,0"
+    color red
+    x 0
+    y 0
+  ]
+  node
+  [
+    id 1
+    label "Green 100,200"
+    color #00FF00
+    x 100
+    y 200
+  ]
+  node
+  [
+    id 2
+    label "Blue -100,100"
+    color "rgb(0, 0, 255)"
+    x -100
+    y 100
+  ]
+  node
+  [
+    id 3
+    label "No color property -100,-200"
+    x -100
+    y -200
+  ]
+  edge
+  [
+    source 0
+    target 1
+    group a
+    color Pink
+  ]
+  edge
+  [
+    source 1
+    target 2
+    group b
+    color "rgb(125, 60, 152)"
+  ]
+  edge
+  [
+    source 2
+    target 3
+    group b
+    color #a04000
+  ]
+  edge
+  [
+    source 1
+    target 3
+    group c
+  ]
+]
+'@ > sampleGraphMini.gml
 ```
 
 ## Size nodes by column
@@ -74,9 +139,9 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ![football](https://github.com/user-attachments/assets/c6424a45-e9ca-4e95-b99f-b867f2c6df76)
 
 
-## Color nodes by numeric column (Ranking)
+## Color nodes (Ranking mode)
 
-football.gml nodes have a **value** property, in graph below nodes with smallest value will be gray, nodes with largest - red. Apart from regular node properties some auto columns can be used: degree, inDegree, outDegree.
+football.gml nodes have a numeric property **value**, in graph below nodes with smallest value will be gray, nodes with largest - red. Apart from regular node properties these auto columns can be used: degree, inDegree, outDegree.
 
 ```powershell
 $graphFile = get-childitem -recurse football.gml
@@ -114,7 +179,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ```
 ![football](https://github.com/user-attachments/assets/b0ce5009-7ca9-4525-add5-afa08b834d4b)
 
-## Color nodes by String column (Partitioning)
+## Color nodes (Partition mode)
 
 Nodes can be colored in **Partition** mode: all nodes with the same value in provided property will have the same color, colors will be chosen automatically.
 I.e. all nodes in polblogs.gml have a **value** property, which is either 0 or 1. Therefore there will be only two colors:
@@ -138,49 +203,12 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ```
 ![polblogs](https://github.com/user-attachments/assets/b7c9b7c8-7cc4-41dd-8030-1811fef98340)
 
-## Color nodes by property value
+## Color nodes (Value mode)
 
 If nodes in your file already have a color property:
 
 ```powershell
-@'
-graph
-[
-  directed 1
-  node
-  [
-    id 0
-    label "Red 0,0"
-    color red
-    x 0
-    y 0
-  ]
-  node
-  [
-    id 1
-    label "Green 100,200"
-    color #00FF00
-    x 100
-    y 200
-  ]
-  node
-  [
-    id 2
-    label "Blue -100,100"
-    color "rgb(0, 0, 255)"
-    x -100
-    y 100
-  ]
-  node
-  [
-    id 3
-    label "No color property -100,-200"
-    x -100
-    y -200
-  ]
-]
-'@ > coloredGraphMini.gml
-$graphFile = Get-Item coloredGraphMini.gml
+$graphFile = Get-Item sampleGraphMini.gml
 $outFile = ($graphFile.BaseName+'.png')
 
 @(
@@ -212,6 +240,84 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 ```
 ![football](https://github.com/user-attachments/assets/860fe61c-9c49-40a1-81e8-089c80d5545c)
+
+## Color edges (Partition mode)
+
+Edges with the same value in specified column will have the same color.
+I.e. edges in **sampleGraphMini.gml** have **group** property with value of a, b or c, so they will be colored to 3 random colors total:
+
+```powershell
+$graphFile = Get-Item .\sampleGraphMini.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='colorEdgesBy';column='group'; mode='partition'}
+  @{op='preview'; 'background-color'='DimGray'; }
+  @{op='export';file=$outFile; resolution=@(640,480)}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+```
+![sampleGraphMini](https://github.com/user-attachments/assets/88512aa0-69bf-4d54-8843-e56f8160ece4)
+
+## Color edges (Ranking mode)
+
+If your edges have numeric property, you can apply color to them based on this property. 
+
+Edges in **lesmis.gml** have a `value` property, which internally intrepreted as weight and renamed to `weight`, below coloring is applied based on this column with default colors - blue,yellow,red:
+
+```powershell
+$graphFile = Get-ChildItem -recurse lesmis.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='colorEdgesBy';column='weight'; mode='ranking'}
+  @{op='preview'; 'background-color'='DimGray'; }
+  @{op='layouts'; values=@(
+    @{name='FruchtermanReingold'; steps=200; }
+  )}
+  @{op='export';file=$outFile; resolution=@(640,480)}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+```
+![lesmis](https://github.com/user-attachments/assets/38e77de6-6aaf-4e7f-88a3-7280e62f0857)
+
+You can specify your own colors and color positions:
+```powershell
+$graphFile = Get-ChildItem -recurse lesmis.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='colorEdgesBy';column='weight'; mode='ranking'; colors=@('gray','red'); colorPositions=@(0.1,1)}
+  @{op='preview'; 'background-color'='DimGray'; }
+  @{op='layouts'; values=@(
+    @{name='FruchtermanReingold'; steps=200; }
+  )}
+  @{op='export';file=$outFile; resolution=@(640,480)}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+```
+![lesmis](https://github.com/user-attachments/assets/193f6bb8-dee2-4797-b276-7e2c76aebb62)
+
+## Color edges (Value mode)
+
+If your edges already have a color specified in one of their properties (as in **sampleGraphMini.gml**), use mode=value:
+
+```powershell
+$graphFile = Get-Item .\sampleGraphMini.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='colorEdgesBy';column='color'; mode='value'}
+  @{op='preview'; 'background-color'='DimGray'; edgeThickness=5; }
+  @{op='export';file=$outFile; resolution=@(640,480)}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+```
+![sampleGraphMini](https://github.com/user-attachments/assets/4f934bfc-37ad-4d9f-b007-b1aa1d142936)
 
 ## Create GIF
 ```powershell

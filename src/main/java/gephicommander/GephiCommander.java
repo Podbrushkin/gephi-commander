@@ -1178,7 +1178,7 @@ public class GephiCommander {
                 for (Float x : colorPositions) {
                     colorPositionsPrim[i++] = x;
                 }
-                
+                System.out.println(column);
                 Function transformingFunction = elementType.equals(Node.class) ?
                     appearanceModel.getNodeFunction(column, RankingElementColorTransformer.class) :
                     appearanceModel.getEdgeFunction(column, RankingElementColorTransformer.class);
@@ -1222,6 +1222,11 @@ public class GephiCommander {
                 String msg = "Bad color mode. Expected: ranking|partition|value. Got: "+mode;
                 throw new IllegalArgumentException(msg);
             }
+        }
+        if (elementType.equals(Edge.class)) {
+            // Otherwise edges are colored as their source node (default mode)
+            var model = Lookup.getDefault().lookup(PreviewController.class).getModel();
+            model.getProperties().putValue(PreviewProperty.EDGE_COLOR, new EdgeColor(Mode.ORIGINAL));
         }
     }
     
