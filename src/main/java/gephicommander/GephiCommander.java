@@ -58,6 +58,9 @@ import org.gephi.filters.plugin.partition.PartitionBuilder.NodePartitionFilter;
 import org.gephi.filters.spi.ElementFilter;
 import org.gephi.graph.api.Column;
 import org.gephi.graph.api.DirectedGraph;
+import org.gephi.graph.api.Edge;
+import org.gephi.graph.api.Element;
+import org.gephi.graph.api.ElementIterable;
 import org.gephi.graph.api.Graph;
 import org.gephi.graph.api.GraphController;
 import org.gephi.graph.api.GraphModel;
@@ -145,10 +148,10 @@ public class GephiCommander {
                     setGraphPreview(op);
                     break;
                 case "colorNodesBy":
-                    colorNodesByColumn(op);
+                    colorElementsByColumn(Node.class, op);
                     break;
                 case "colorEdgesBy":
-                    colorEdgesByColumn(op);
+                    colorElementsByColumn(Edge.class, op);
                     break;
                 case "sizeNodesBy":
                     sizeNodesByColumn(op);
@@ -400,17 +403,11 @@ public class GephiCommander {
                     break;
                 case "nodeColumns":
                     System.out.println("Node columns:");
-                    System.out.println("id\ttitle\ttype");
-                    for (var col : graphModel.getNodeTable()) {
-                        System.out.printf("%s\t%s\t%s%n",col.getId(),col.getTitle(),col.getTypeClass().getSimpleName());
-                    }
+                    System.out.println(getColumnsInfo(Node.class));
                     break;
                 case "edgeColumns":
                     System.out.println("Edge columns:");
-                    System.out.println("id\ttitle\ttype");
-                    for (var col : graphModel.getEdgeTable()) {
-                        System.out.printf("%s\t%s\t%s%n",col.getId(),col.getTitle(),col.getTypeClass().getSimpleName());
-                    }
+                    System.out.println(getColumnsInfo(Edge.class));
                     break;
                 case "nodeCoordinates":
                     var jsonObj = printNodeCoordinates();
@@ -421,6 +418,20 @@ public class GephiCommander {
                     break;
             }
         }
+    }
+    private static String getColumnsInfo(Class<? extends Element> nodeOrEdgeClass) {
+        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+        var sb = new StringBuilder();
+        var table = nodeOrEdgeClass.equals(Node.class) ? 
+            graphModel.getNodeTable() :
+            graphModel.getEdgeTable();
+        
+        sb.append("id\ttitle\ttype\n");
+        for (var col : table) {
+            var s = String.format("%s\t%s\t%s%n",col.getId(),col.getTitle(),col.getTypeClass().getSimpleName());
+            sb.append(s);
+        }
+        return sb.toString();
     }
 
     /*
@@ -1106,14 +1117,30 @@ public class GephiCommander {
             }
         }
     }
-    private static void colorEdgesByColumn(JsonObject options) {
+    private static void colorElementsByColumn(Class<? extends Element> elementType, JsonObject options) {
+        if (!elementType.equals(Node.class) && !elementType.equals(Edge.class))
+            throw new IllegalArgumentException("Was expecting Node.class or Edge.class but got "+elementType);
+        
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
         AppearanceModel appearanceModel = appearanceController.getModel();
         DirectedGraph graph = graphModel.getDirectedGraph();
+        
+        String desiredColumn = options.get("column").getAsString();
 
-        Column column = graphModel.getEdgeTable().getColumn(options.get("column").getAsString());
-        // graphModel.getEdgeTable().
+        Column column = elementType.equals(Node.class) ? 
+            getNodeColumnIncludingDefault(graphModel, desiredColumn) :
+            graphModel.getEdgeTable().getColumn(desiredColumn);
+        
+        if (column == null) {
+             String msg = String.format("Such column haven't been found: %s. Check out existing %s columns: %n%s",
+                desiredColumn,
+                elementType.getSimpleName(),
+                getColumnsInfo(elementType)
+            );
+            throw new IllegalArgumentException(msg);
+        }
+        
         String mode = options.get("mode").getAsString().toLowerCase();
 
         switch (mode) {
@@ -1145,14 +1172,17 @@ public class GephiCommander {
                         colorPositions.add(1.0f/(colors.size()-1)*i);
                     }
                 }
-                System.out.println("colorPositions="+colorPositions);
+                //System.out.println("colorPositions="+colorPositions);
                 float[] colorPositionsPrim = new float[colorPositions.size()];
                 int i = 0;
                 for (Float x : colorPositions) {
                     colorPositionsPrim[i++] = x;
                 }
-                System.out.println(column);
-                Function transformingFunction = appearanceModel.getEdgeFunction(column, RankingElementColorTransformer.class);
+                
+                Function transformingFunction = elementType.equals(Node.class) ?
+                    appearanceModel.getNodeFunction(column, RankingElementColorTransformer.class) :
+                    appearanceModel.getEdgeFunction(column, RankingElementColorTransformer.class);
+                
                 RankingElementColorTransformer transformer = transformingFunction.getTransformer();
                 transformer.setColors(colors.toArray(new Color[0]));
                 transformer.setColorPositions(colorPositionsPrim);
@@ -1161,7 +1191,10 @@ public class GephiCommander {
                 break;
             } 
             case "partition" : {
-                Function transformingFunction = appearanceModel.getEdgeFunction(column, PartitionElementColorTransformer.class);
+                Function transformingFunction = elementType.equals(Node.class) ?
+                    appearanceModel.getNodeFunction(column, PartitionElementColorTransformer.class) :
+                    appearanceModel.getEdgeFunction(column, PartitionElementColorTransformer.class);
+                
                 Partition partition = ((PartitionFunction) transformingFunction).getPartition();
                 Palette palette = PaletteManager.getInstance().generatePalette(partition.size(graph));
                 partition.setColors(graph, palette.getColors());
@@ -1170,12 +1203,16 @@ public class GephiCommander {
                 break;
             } 
             case "value" : {
-                for (var edge : graphModel.getDirectedGraph().getEdges()) {
+                ElementIterable<?> iter = elementType.equals(Node.class) ?
+                    graphModel.getDirectedGraph().getNodes() :
+                    graphModel.getDirectedGraph().getEdges();
+                
+                for (Element el : iter) {
                     try {
-                        String colorValue = edge.getAttribute(column).toString();
+                        String colorValue = el.getAttribute(column).toString();
                         Color color = GephiCommander.parseColor(colorValue);
                         if (color != null) {
-                            edge.setColor(color);
+                            el.setColor(color);
                         }
                     } catch (Exception e) {}
                 }
@@ -1187,20 +1224,6 @@ public class GephiCommander {
             }
         }
     }
-    /* private static void colorEdgesByColumn(String columnName) {
-        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
-        AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
-        AppearanceModel appearanceModel = appearanceController.getModel();
-        DirectedGraph graph = graphModel.getDirectedGraph();
-
-        Column column = graphModel.getEdgeTable().getColumn(columnName);
-        Function func = appearanceModel.getEdgeFunction(column, PartitionElementColorTransformer.class);
-        Partition partition = ((PartitionFunction) func).getPartition();
-        Palette palette = PaletteManager.getInstance().generatePalette(partition.size(graph));
-        partition.setColors(graph, palette.getColors());
-        appearanceController.transform(func);
-    } */
-
     
     public static void setGraphPreview(JsonObject options) {
         PreviewModel model = Lookup.getDefault().lookup(PreviewController.class).getModel();
