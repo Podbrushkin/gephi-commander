@@ -317,7 +317,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
   @{op='export';file=$outFile; resolution=@(640,480)}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 ```
-![sampleGraphMini](https://github.com/user-attachments/assets/4f934bfc-37ad-4d9f-b007-b1aa1d142936)
+<img src="https://github.com/user-attachments/assets/4f934bfc-37ad-4d9f-b007-b1aa1d142936" width="240"/>
 
 ## Create GIF
 ```powershell
