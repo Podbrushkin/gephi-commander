@@ -233,27 +233,10 @@ class MyPNGExporter extends PNGExporter {
             Image sourceImg = target.getImage();
             Graphics imgGraphics = sourceImg.getGraphics();
 
-            // imgGraphics.setColor(Color.BLUE);
-            // drawPointByDrawingCoords(imgGraphics,100,200);
-            imgGraphics.setColor(Color.PINK);
-            drawPointInModelCoords(imgGraphics,target,100,200);
+            // this always correct, for any scaling
+            // imgGraphics.setColor(Color.PINK);
+            // drawPointInModelCoords(imgGraphics,target,100,200);
             
-            if (boundsJsonObj != null && 
-                options.has("drawBounds") &&
-                options.get("drawBounds").getAsBoolean() 
-                ) {
-                
-                imgGraphics.setColor(Color.GREEN);
-                var origRect = new Rectangle2D.Float(
-                    boundsJsonObj.get("xMin").getAsFloat(),
-                    boundsJsonObj.get("yMax").getAsFloat(),
-                    boundsJsonObj.get("graphWidth").getAsFloat(),
-                    boundsJsonObj.get("graphHeight").getAsFloat()
-                );
-                var newRect = originalToDrawingCoords(origRect);
-                imgGraphics.drawRect((int)newRect.getX(), (int)newRect.getY(), (int)newRect.getWidth(),(int)newRect.getHeight());
-            }
-
             if (options.has("drawDebug") &&
                 options.get("drawDebug").getAsBoolean() 
                 ) {
@@ -330,24 +313,6 @@ class MyPNGExporter extends PNGExporter {
         var x = (point.getX()  + transl.x)* scaling +width/2*(1-scaling);
         var y = (-point.getY() + transl.y)* scaling +height/2*(1-scaling);
         return new Point2D.Float((float)x, (float)y);
-    }
-    
-    public Rectangle2D.Float originalToDrawingCoords(Rectangle2D.Float rect) {
-        float scaling = target.getScaling();
-        // System.out.printf("%s %s%n",width,scaling);
-        Vector transl = target.getTranslate();
-        // transl.mult(scaling);
-        System.out.printf("%s %s %s %s %s %n",rect.x,rect.y,transl.x,transl.y,scaling);
-        
-        var oldPoint = new Point2D.Float(rect.x, rect.y);
-        var newPoint = scaleAndTranslateToDrawingCoord(oldPoint);
-        // I have no idea why this works
-        return new Rectangle2D.Float(
-            newPoint.x,
-            newPoint.y,
-            rect.width * scaling,
-            rect.height * scaling
-        );
     }
 
     public int getHeight() {

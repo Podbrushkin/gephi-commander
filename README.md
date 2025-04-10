@@ -365,27 +365,29 @@ $outFile = "$dir\output.gif"
 
 ## Follow a node
 
-Put a node id into findNode and reference it in translateX/Y expressions:
+Put a node id into findNode and reference it in centerOnX/Y expressions:
 ```powershell
-$graphFile = get-childitem -recurse football.gml
+$graphFile = get-childitem -recurse dolphins.gml
 $dir = $graphFile.Directory
 $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
 @(
   @{op='import'; file=$graphFile.FullName }
-  @{op='preview'; nodeLabelShow=$true; }
+  @{op='preview'; 'background-color'='DimGray'; 'nodeLabelShow'=$true; nodeLabelColor='White' }
   @{op='layouts'; values=@(
-  @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.01; Scaling=20; steps=40; exportEach=1;
-   export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true;
-    PNGExporter=@{ scaling="1"; translateX="-(nodeX*sc+w/2*(1-sc) -w/2 )/sc"; translateY="-(-nodeY*sc+h/2*(1-sc) -h/2 )/sc"; findNode="23"}
+   @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.01; Scaling=20; steps=40; exportEach=1;
+      export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true
+       PNGExporter=@{scaling=0.6; centerOnX='nodeX'; centerOnY='nodeY'; findNode="2" }
+      }
    }
-  }
 )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
-$outFile = "$dir\output.gif"
-& $magickExe -delay 0 -loop 0 "$dir\*.png" $outFile
+& $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" "$dir\output.gif"
+gci $dir *.png | Remove-Item
+start "$dir\output.gif"
 ```
-![output](https://github.com/user-attachments/assets/77f5884b-eeee-4c6a-bd62-675fa6763d31)
+![output](https://github.com/user-attachments/assets/97eea1c9-5fd5-4e62-91db-60d5094dac17)
 
 ## Live preview
 
