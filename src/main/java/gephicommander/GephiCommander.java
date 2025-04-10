@@ -6,8 +6,6 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -20,7 +18,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -43,6 +40,7 @@ import org.gephi.appearance.api.PartitionFunction;
 import org.gephi.appearance.plugin.PartitionElementColorTransformer;
 import org.gephi.appearance.plugin.RankingElementColorTransformer;
 import org.gephi.appearance.plugin.RankingNodeSizeTransformer;
+import org.gephi.appearance.plugin.RankingSizeTransformer;
 import org.gephi.appearance.plugin.palette.Palette;
 import org.gephi.appearance.plugin.palette.PaletteManager;
 import org.gephi.filters.api.FilterController;
@@ -98,6 +96,8 @@ import org.gephi.preview.types.EdgeColor.Mode;
 import org.gephi.project.api.ProjectController;
 import org.gephi.project.api.Workspace;
 import org.gephi.statistics.plugin.ConnectedComponents;
+import org.gephi.statistics.plugin.EigenvectorCentrality;
+import org.gephi.statistics.plugin.GraphDistance;
 import org.gephi.statistics.plugin.Modularity;
 import org.gephi.toolkit.demos.plugins.preview.PreviewSketch;
 import org.openide.nodes.Node.Property;
@@ -146,6 +146,12 @@ public class GephiCommander {
                     break;
                 case "preview":
                     setGraphPreview(op);
+                    break;
+                case "labelNodesBy":
+                    labelElementsByColumn(Node.class, op);
+                    break;
+                case "labelEdgesBy":
+                    labelElementsByColumn(Edge.class, op);
                     break;
                 case "colorNodesBy":
                     colorElementsByColumn(Node.class, op);
@@ -289,6 +295,18 @@ public class GephiCommander {
                     var connectedComponents = new ConnectedComponents();
                     connectedComponents.setDirected(false);
                     connectedComponents.execute(graphModel);
+                    break;
+                }
+                case "EigenvectorCentrality" : {
+                    var stats = new EigenvectorCentrality();
+                    stats.setDirected(true);
+                    stats.execute(graphModel);
+                    break;
+                }
+                case "GraphDistance" : {
+                    var stats = new GraphDistance();
+                    stats.setDirected(true);
+                    stats.execute(graphModel);
                     break;
                 }
                 default : System.out.println("No such statistics: "+name);
@@ -1114,6 +1132,42 @@ public class GephiCommander {
             default : {
                 String msg = "Bad color mode. Expected: ranking|partition|value. Got: "+mode;
                 throw new IllegalArgumentException(msg);
+            }
+        }
+    }
+
+    private static void labelElementsByColumn(Class<? extends Element> elementType, JsonObject options) {
+        // Get the column name from options
+        var el = options.get("column");
+        String columnName = el.isJsonNull() ? null : el.getAsString();
+        
+        // Get current workspace and graph
+        ProjectController pc = Lookup.getDefault().lookup(ProjectController.class);
+        Workspace workspace = pc.getCurrentWorkspace();
+        GraphModel graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel(workspace);
+        Graph graph = graphModel.getGraph();
+        
+        // Handle nodes
+        if (elementType == Node.class) {
+            for (Node node : graph.getNodes()) {
+                if (columnName == null) {
+                    node.removeAttribute("Label");
+                    continue;
+                }
+                Object labelValue = node.getAttribute(columnName);
+                if (labelValue != null) {
+                    node.setLabel(labelValue.toString());
+                }
+            }
+        } 
+        // Handle edges
+        else if (elementType == Edge.class) {
+            for (Edge edge : graph.getEdges()) {
+                // edge.
+                Object labelValue = edge.getAttribute(columnName);
+                if (labelValue != null) {
+                    edge.setLabel(labelValue.toString());
+                }
             }
         }
     }
