@@ -1479,15 +1479,28 @@ public class GephiCommander {
             runAlgoForMaximum(layout, maxSteps);
         }
     }
+
+    private static Integer currentAlgoEach = null;
+    static Integer getCurrentAlgoEach() {
+        return currentAlgoEach;
+    }
+    private static Integer currentAlgoSteps = null;
+    static Integer getCurrentAlgoSteps() {
+        return currentAlgoSteps;
+    }
+    
     private static void runAlgoWithExporting(Layout layout, JsonObject layoutOptions) {
         String layoutName = layout.getClass().getSimpleName();
         var exportOptions = layoutOptions.get("export").getAsJsonObject();
         int each = layoutOptions.get("exportEach").getAsInt();
         int steps = layoutOptions.get("steps").getAsInt();
 
+        // These can be used by PNGExporter 🫡
+        currentAlgoEach = each;
+        currentAlgoSteps = steps;
+
         System.out.printf("Applying layout %s with %s steps...%n", layoutName, steps);
         layout.initAlgo();
-        //export(exportOptions);
         for (int k = 1; k <= steps; k++) {
             layout.goAlgo();
             if (k % each == 0 || k == steps) {
@@ -1496,6 +1509,9 @@ public class GephiCommander {
         }
         layout.endAlgo();
         System.out.println("Applying "+ layoutName + " is finished.");
+
+        currentAlgoEach = null;
+        currentAlgoSteps = null;
     }
 
     private static Color parseColor(String colorValue) {

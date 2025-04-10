@@ -43,8 +43,8 @@ class MyPNGExporter extends PNGExporter {
     private boolean cancel = false;
     private Workspace workspace;
     private OutputStream stream;
-    private int width = 1024;
-    private int height = 1024;
+    private int widthImg = 1024;
+    private int heightImg = 1024;
     private boolean transparentBackground = false;
     private int margin = 4;
     private G2DTarget target;
@@ -75,7 +75,8 @@ class MyPNGExporter extends PNGExporter {
             } else {
                 node = GephiCommander.getNodeById(jsonPrim.getAsNumber());
             }
-            System.out.println("found node: "+node);
+            System.out.printf("found node: %s %s %s %s %n",
+                node.getId(),node.getLabel(),node.x(),node.y());
         }
         if (options.has("transparentBg") && 
             options.get("transparentBg").getAsBoolean()) {
@@ -132,19 +133,33 @@ class MyPNGExporter extends PNGExporter {
             // engine.eval(prevExpr+";");
             
 
-            // System.out.println("MyPNGExporter expressons start");
-            if (scalingExpr != null) {
-                String scalingExprLocal = scalingExpr
-                    .replaceAll("\\bi\\b", String.valueOf(iteration))
-                    .replaceAll("\\bw\\b", String.valueOf(width))
-                    .replaceAll("\\bh\\b", String.valueOf(height));
-                
-                scaling = ((Number)engine.eval(scalingExprLocal)).floatValue();
+            // Please change
+            Integer exportSteps = GephiCommander.getCurrentAlgoSteps();
+            Integer exportEach = GephiCommander.getCurrentAlgoEach();
+            engine.put("steps", exportSteps);
+            engine.put("each", exportEach);
+            engine.put("i", iteration);
+            engine.put("w", widthImg);
+            engine.put("h", heightImg);
+            
+            
+
+            if (options.has("scalingStart") && options.has("scalingEnd")) {
+                var scalingStart = options.get("scalingStart").getAsFloat();
+                var scalingEnd = options.get("scalingEnd").getAsFloat();
+                // engine.put("scalingStart", scalingStart);
+                // engine.put("scalingEnd", scalingEnd);
+                // scalingExpr = "0.6+(i*each/steps)*(1-0.6)";
+                scaling = scalingStart+(iteration*(float)exportEach/(float)exportSteps)*(scalingEnd-scalingStart);
+                System.out.printf("Scaling: %s > %s. Current: %s%n",scalingStart,scalingEnd,scaling);
+                target.setScaling(scaling);
+            }
+            else if (scalingExpr != null) {
+                scaling = ((Number)engine.eval(scalingExpr)).floatValue();
                 target.setScaling(scaling);
             }
             if (node != null) {
                 var point = new Point2D.Float(node.x(),node.y());
-                // pointTr = scaleAndTranslateToDrawingCoord(point);
                 
                 engine.put("nodeX",point.x);
                 engine.put("nodeY",point.y);
@@ -154,11 +169,15 @@ class MyPNGExporter extends PNGExporter {
                 String exprY = options.get("centerOnY").getAsString();
                 float x = ((Number)engine.eval(exprX)).floatValue();
                 float y = ((Number)engine.eval(exprY)).floatValue();
+                System.out.printf("centerOn evaluated to %s %s %n",x,y);
                 centerOnModelCoord(target, x, y);
             }
             if (options.has("centerOnX") ^ options.has("centerOnY"))
                 throw new IllegalArgumentException("centerOnX, centerOnY: either both or none.");
 
+            if ((options.has("centerOnX") || options.has("centerOnY")) &&
+                (options.has("translateX") || options.has("translateY"))) 
+                throw new IllegalArgumentException("centerOnX/Y and translateX/Y cannot be used together.");
             
             
             var translateX = target.getTranslate().getX();
@@ -166,8 +185,8 @@ class MyPNGExporter extends PNGExporter {
             if (translateXExpr != null) {
                 String expressionLocal = translateXExpr
                     .replaceAll("\\bi\\b", String.valueOf(iteration))
-                    .replaceAll("\\bw\\b", String.valueOf(width))
-                    .replaceAll("\\bh\\b", String.valueOf(height))
+                    .replaceAll("\\bw\\b", String.valueOf(widthImg))
+                    .replaceAll("\\bh\\b", String.valueOf(heightImg))
                     .replaceAll("\\bsc\\b", String.valueOf(scaling));
                 Number value = (Number)engine.eval(expressionLocal);
                 translateX = value.floatValue();
@@ -175,8 +194,8 @@ class MyPNGExporter extends PNGExporter {
             if (translateYExpr != null) {
                 String expressionLocal = translateYExpr
                     .replaceAll("\\bi\\b", String.valueOf(iteration))
-                    .replaceAll("\\bw\\b", String.valueOf(width))
-                    .replaceAll("\\bh\\b", String.valueOf(height))
+                    .replaceAll("\\bw\\b", String.valueOf(widthImg))
+                    .replaceAll("\\bh\\b", String.valueOf(heightImg))
                     .replaceAll("\\bsc\\b", String.valueOf(scaling));
                 Number value = (Number)engine.eval(expressionLocal);
                 translateY = value.floatValue();
@@ -246,11 +265,11 @@ class MyPNGExporter extends PNGExporter {
                 var str = String.format("sc=%s\ntr=%s",target.getScaling(),target.getTranslate());
                 var font = imgGraphics.getFont().deriveFont(32f);
                 imgGraphics.setFont(font);
-                imgGraphics.drawString(str,0,(int)(height*0.95));
+                imgGraphics.drawString(str,0,(int)(heightImg*0.95));
             }
             
             iteration++;
-            BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            BufferedImage img = new BufferedImage(widthImg, heightImg, BufferedImage.TYPE_INT_ARGB);
             img.getGraphics().drawImage(sourceImg, 0, 0, null);
             ImageIO.write(img, "png", stream);
             stream.close();
@@ -301,8 +320,8 @@ class MyPNGExporter extends PNGExporter {
                         modelX, modelY, scaling);
 
         // Correct for any scaling
-        float translateX = -(modelX * scaling + (width/2) * (1 - scaling) - width/2) / scaling;
-        float translateY = -(-modelY * scaling + (height/2) * (1 - scaling) - height/2) / scaling;
+        float translateX = -(modelX * scaling + (widthImg/2) * (1 - scaling) - widthImg/2) / scaling;
+        float translateY = -(-modelY * scaling + (heightImg/2) * (1 - scaling) - heightImg/2) / scaling;
         
         target.getTranslate().set(translateX, translateY);
     }
@@ -310,25 +329,25 @@ class MyPNGExporter extends PNGExporter {
     private Point2D.Float scaleAndTranslateToDrawingCoord(Point2D.Float point) {
         float scaling = target.getScaling();
         Vector transl = target.getTranslate();
-        var x = (point.getX()  + transl.x)* scaling +width/2*(1-scaling);
-        var y = (-point.getY() + transl.y)* scaling +height/2*(1-scaling);
+        var x = (point.getX()  + transl.x)* scaling +widthImg/2*(1-scaling);
+        var y = (-point.getY() + transl.y)* scaling +heightImg/2*(1-scaling);
         return new Point2D.Float((float)x, (float)y);
     }
 
     public int getHeight() {
-        return height;
+        return heightImg;
     }
 
     public void setHeight(int height) {
-        this.height = height;
+        this.heightImg = height;
     }
 
     public int getWidth() {
-        return width;
+        return widthImg;
     }
 
     public void setWidth(int width) {
-        this.width = width;
+        this.widthImg = width;
     }
 
     public int getMargin() {
@@ -379,8 +398,8 @@ class MyPNGExporter extends PNGExporter {
     private synchronized void setExportProperties(PreviewModel m) {
         PreviewProperties props = m.getProperties();
         props.putValue(PreviewProperty.VISIBILITY_RATIO, 1.0F);
-        props.putValue("width", width);
-        props.putValue("height", height);
+        props.putValue("width", widthImg);
+        props.putValue("height", heightImg);
         oldColor = props.getColorValue(PreviewProperty.BACKGROUND_COLOR);
         if (transparentBackground) {
             props.putValue(
