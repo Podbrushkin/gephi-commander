@@ -90,6 +90,7 @@ class MyPNGExporter extends PNGExporter {
         PreviewController ctrl
             = Lookup.getDefault().lookup(PreviewController.class);
         PreviewModel m = ctrl.getModel(workspace);
+        
 
         setExportProperties(m);
         ctrl.refreshPreview(workspace);
@@ -118,6 +119,9 @@ class MyPNGExporter extends PNGExporter {
                 engine.eval("bounds = "+json);
                 // engine.eval("print('from js!');print(bounds.yMax);");
             }
+
+            
+
             // user can access last used scaling and translate
             // String prevExpr = "let prev";
             if (previousInfo != null) {
@@ -145,6 +149,15 @@ class MyPNGExporter extends PNGExporter {
                 engine.put("nodeX",point.x);
                 engine.put("nodeY",point.y);
             }
+            if (options.has("centerOnX") && options.has("centerOnY")) {
+                String exprX = options.get("centerOnX").getAsString();
+                String exprY = options.get("centerOnY").getAsString();
+                float x = ((Number)engine.eval(exprX)).floatValue();
+                float y = ((Number)engine.eval(exprY)).floatValue();
+                centerOnModelCoord(target, x, y);
+            }
+            if (options.has("centerOnX") ^ options.has("centerOnY"))
+                throw new IllegalArgumentException("centerOnX, centerOnY: either both or none.");
 
             
             
@@ -215,16 +228,22 @@ class MyPNGExporter extends PNGExporter {
 
             Progress.switchToIndeterminate(progress);
 
+            
+
             Image sourceImg = target.getImage();
-            Graphics srcGraphics = sourceImg.getGraphics();
-            // target.
+            Graphics imgGraphics = sourceImg.getGraphics();
+
+            // imgGraphics.setColor(Color.BLUE);
+            // drawPointByDrawingCoords(imgGraphics,100,200);
+            imgGraphics.setColor(Color.PINK);
+            drawPointInModelCoords(imgGraphics,target,100,200);
             
             if (boundsJsonObj != null && 
                 options.has("drawBounds") &&
                 options.get("drawBounds").getAsBoolean() 
                 ) {
                 
-                srcGraphics.setColor(Color.GREEN);
+                imgGraphics.setColor(Color.GREEN);
                 var origRect = new Rectangle2D.Float(
                     boundsJsonObj.get("xMin").getAsFloat(),
                     boundsJsonObj.get("yMax").getAsFloat(),
@@ -232,22 +251,20 @@ class MyPNGExporter extends PNGExporter {
                     boundsJsonObj.get("graphHeight").getAsFloat()
                 );
                 var newRect = originalToDrawingCoords(origRect);
-                srcGraphics.drawRect((int)newRect.getX(), (int)newRect.getY(), (int)newRect.getWidth(),(int)newRect.getHeight());
+                imgGraphics.drawRect((int)newRect.getX(), (int)newRect.getY(), (int)newRect.getWidth(),(int)newRect.getHeight());
             }
 
             if (options.has("drawDebug") &&
                 options.get("drawDebug").getAsBoolean() 
                 ) {
-                srcGraphics.setColor(Color.GRAY);
+                imgGraphics.setColor(Color.GRAY);
                 // srcGraphics.drawLine(width/2, height/2, (int)pointTr.x, (int)pointTr.y);
                 // srcGraphics.fillOval(0, 0, width/100, height/100);
                 var str = String.format("sc=%s\ntr=%s",target.getScaling(),target.getTranslate());
-                var font = srcGraphics.getFont().deriveFont(32f);
-                srcGraphics.setFont(font);
-                srcGraphics.drawString(str,0,(int)(height*0.95));
+                var font = imgGraphics.getFont().deriveFont(32f);
+                imgGraphics.setFont(font);
+                imgGraphics.drawString(str,0,(int)(height*0.95));
             }
-
-            
             
             iteration++;
             BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
@@ -264,19 +281,49 @@ class MyPNGExporter extends PNGExporter {
 
         return !cancel;
     }
-
-    /* public Rectangle2D.Float originalToDrawingCoords(float minX, float maxY, float graphWidth, float graphHeight) {
-        return originalToDrawingCoords(new Rectangle2D.Float(
-            minX,maxY,graphWidth,graphHeight
-        ));
-    } */
     
-    /* private Point2D.Float scaleToDrawingCoord(Point2D.Float point) {
+
+    private void drawPointByDrawingCoords(Graphics srcGraphics, int x, int y) {
+        srcGraphics.fillOval(x, y, 5, 5);
+        String str = String.format("%s %s",x,y);
+        srcGraphics.drawString(str, x, y);
+    }
+    private void drawPointInModelCoords(Graphics srcGraphics, G2DTarget target, float modelX, float modelY) {
+        // Convert model coordinates to view coordinates
+        Point2D viewPoint = convertCoordModelToView(target,modelX,modelY);
+        
+        int x = (int) viewPoint.getX();
+        int y = (int) viewPoint.getY();
+        
+        // Draw the point (now in view coordinates)
+        srcGraphics.fillOval(x - 2, y - 2, 5, 5);  // Center the oval on the point
+        
+        // Draw coordinates label
+        String str = String.format("model=%.1f, %.1f\nview=%s %s", modelX, modelY,x,y);
+        srcGraphics.drawString(str, x, y);  // Offset the text slightly
+    }
+    private Point2D convertCoordModelToView(G2DTarget target, float x, float y) {
+        Point2D modelPoint = new Point2D.Float(x, -y);
+        return target.getGraphics().getTransform().transform(modelPoint, null);
+    }
+    /**
+     * Centers the view on a specific model coordinate (e.g., node position).
+     * @param target The G2DTarget to adjust.
+     * @param modelX Model X-coordinate to center on.
+     * @param modelY Model Y-coordinate to center on.
+     */
+    private void centerOnModelCoord(G2DTarget target, float modelX, float modelY) {
         float scaling = target.getScaling();
-        var newX = width/2 - point.x*scaling;
-        var newY = height/2 + point.y*scaling;
-        return new Point2D.Float((float)newX, (float)newY);
-    } */
+        System.out.printf("Centering on (%.1f, %.1f) with scaling=%.2f%n", 
+                        modelX, modelY, scaling);
+
+        // Correct for any scaling
+        float translateX = -(modelX * scaling + (width/2) * (1 - scaling) - width/2) / scaling;
+        float translateY = -(-modelY * scaling + (height/2) * (1 - scaling) - height/2) / scaling;
+        
+        target.getTranslate().set(translateX, translateY);
+    }
+    
     private Point2D.Float scaleAndTranslateToDrawingCoord(Point2D.Float point) {
         float scaling = target.getScaling();
         Vector transl = target.getTranslate();
