@@ -396,6 +396,15 @@ public class GephiCommander {
                 case "FruchtermanReingold" : {
                     applyFruchtermanReingoldLayout(options); break;
                 }
+                case "NoOp" : {
+                    var layout = new NoOpLayout();
+                    if (options.has("export")) {
+                        runAlgoWithExporting(layout,options);
+                    } else {
+                        runAlgoFor(layout, options);
+                    }
+                    break;
+                }
                 default : System.out.println("No such layout: "+name);
     
             }
@@ -1488,6 +1497,10 @@ public class GephiCommander {
     static Integer getCurrentAlgoSteps() {
         return currentAlgoSteps;
     }
+    private static Integer currentAlgoIteration = null;
+    static Integer getCurrentAlgoIteration() {
+        return currentAlgoIteration;
+    }
     
     private static void runAlgoWithExporting(Layout layout, JsonObject layoutOptions) {
         String layoutName = layout.getClass().getSimpleName();
@@ -1502,6 +1515,7 @@ public class GephiCommander {
         System.out.printf("Applying layout %s with %s steps...%n", layoutName, steps);
         layout.initAlgo();
         for (int k = 1; k <= steps; k++) {
+            currentAlgoIteration = k;
             layout.goAlgo();
             if (k % each == 0 || k == steps) {
                 export(exportOptions);
@@ -1512,6 +1526,7 @@ public class GephiCommander {
 
         currentAlgoEach = null;
         currentAlgoSteps = null;
+        currentAlgoIteration = null;
     }
 
     private static Color parseColor(String colorValue) {

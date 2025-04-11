@@ -10,6 +10,7 @@ import java.io.OutputStream;
 import javax.imageio.ImageIO;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
+import javax.script.ScriptException;
 
 import org.gephi.graph.api.Node;
 import org.gephi.io.exporter.preview.PNGExporter;
@@ -26,6 +27,7 @@ import org.gephi.utils.progress.Progress;
 import org.gephi.utils.progress.ProgressTicket;
 import org.openide.util.Lookup;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 class MyPNGExporter extends PNGExporter {
@@ -33,7 +35,7 @@ class MyPNGExporter extends PNGExporter {
     private static ScriptEngine engine = new ScriptEngineManager().getEngineByName("JavaScript");
 
     private JsonObject options = new JsonObject();
-    private static int iteration = 0;
+    private static int iterationGlobal = 0;
 
     private ProgressTicket progress;
     private boolean cancel = false;
@@ -119,11 +121,13 @@ class MyPNGExporter extends PNGExporter {
             
 
             // Please change
-            Integer exportSteps = GephiCommander.getCurrentAlgoSteps();
+            Integer steps = GephiCommander.getCurrentAlgoSteps();
             Integer exportEach = GephiCommander.getCurrentAlgoEach();
-            engine.put("steps", exportSteps);
-            engine.put("each", exportEach);
-            engine.put("i", iteration);
+            Integer step = GephiCommander.getCurrentAlgoIteration();
+            engine.put("steps", steps);
+            engine.put("exportEach", exportEach);
+            // engine.put("i", iterationGlobal);
+            engine.put("step", step);
             engine.put("w", widthImg);
             engine.put("h", heightImg);
             
@@ -131,15 +135,21 @@ class MyPNGExporter extends PNGExporter {
 
             float scaling = target.getScaling();
             if (options.has("scalingStart") || options.has("scalingEnd")) {
-                var scalingStart = options.has("scalingStart") ? 
-                    options.get("scalingStart").getAsFloat() : 1f;
+                String scalingStartExpr = options.has("scalingStart") ? 
+                    options.get("scalingStart").getAsString() : "1";
                 
-                var scalingEnd = options.has("scalingEnd") ? 
-                    options.get("scalingEnd").getAsFloat() : 1f;
+                String scalingEndExpr = options.has("scalingEnd") ? 
+                    options.get("scalingEnd").getAsString() : "1";
                 
-                scaling = scalingStart+(iteration*(float)exportEach/(float)exportSteps)*(scalingEnd-scalingStart);
+                float scalingStart = ((Number)engine.eval(scalingStartExpr)).floatValue();
+                float scalingEnd = ((Number)engine.eval(scalingEndExpr)).floatValue();
+
+                scaling = scalingStart+(step/(float)steps)*(scalingEnd-scalingStart);
+
                 System.out.printf("Scaling(start=%s;end=%s). Current: %s%n",scalingStart,scalingEnd,scaling);
                 target.setScaling(scaling);
+
+                System.out.printf("iteration=%s,exportEach=%s,exportSteps=%s%n",step,exportEach,steps);
             }
             else if (options.has("scaling")) {
                 String scalingExpr = options.get("scaling").getAsString();
@@ -167,6 +177,23 @@ class MyPNGExporter extends PNGExporter {
                 float y = ((Number)engine.eval(exprY)).floatValue();
                 System.out.printf("centerOn evaluated to %s %s %n",x,y);
                 centerOnModelCoord(target, x, y);
+            }
+            if (options.has("centerOnStart") && options.has("centerOnEnd")) {
+                var elStart = options.get("centerOnStart");
+                var elEnd = options.get("centerOnEnd");
+                if (!elStart.isJsonArray() || elStart.getAsJsonArray().size() != 2 ||
+                    !elEnd.isJsonArray() || elEnd.getAsJsonArray().size() != 2)
+                    throw new IllegalArgumentException("centerOnStart/End both should be an array of 2 elements - x and y.");
+                
+                Point2D.Float pointStart = evaluateAndGetPoint(elStart);
+                Point2D.Float pointEnd = evaluateAndGetPoint(elEnd);
+
+                // "0 + step / steps * (nodeX - 0)"
+                float currentX = (float)(pointStart.getX() + (float)step / (float)steps * (pointEnd.getX() - pointStart.getX()));
+                float currentY = (float)(pointStart.getY() + (float)step / (float)steps * (pointEnd.getY() - pointStart.getY()));
+
+                centerOnModelCoord(target, currentX, currentY);
+                
             }
 
             if (options.has("centerOn") && options.has("translate")) 
@@ -251,7 +278,7 @@ class MyPNGExporter extends PNGExporter {
                 imgGraphics.drawString(str,0,(int)(heightImg*0.95));
             }
             
-            iteration++;
+            iterationGlobal++;
             BufferedImage img = new BufferedImage(widthImg, heightImg, BufferedImage.TYPE_INT_ARGB);
             img.getGraphics().drawImage(sourceImg, 0, 0, null);
             ImageIO.write(img, "png", stream);
@@ -265,6 +292,21 @@ class MyPNGExporter extends PNGExporter {
         Progress.finish(progress);
 
         return !cancel;
+    }
+
+    private Point2D.Float evaluateAndGetPoint(JsonElement el) throws ScriptException {
+            if (!el.isJsonArray() || el.getAsJsonArray().size() != 2)
+                throw new IllegalArgumentException("centerOnStart/End both should be an array of 2 elements - x and y.");
+            
+            var point = el.getAsJsonArray();
+            String exprX = point.get(0).getAsString();
+            String exprY = point.get(1).getAsString();
+            
+            
+            float x = ((Number)engine.eval(exprX)).floatValue();
+            float y = ((Number)engine.eval(exprY)).floatValue();
+
+            return new Point2D.Float(x,y);
     }
     
 

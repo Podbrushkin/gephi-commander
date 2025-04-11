@@ -357,6 +357,32 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ```
 ![sampleGraphMini](https://github.com/user-attachments/assets/ed0baab0-184c-4a8c-b358-f60e48019880)
 
+You can choose initial and final points of movement.
+
+```powershell
+$graphFile = Get-ChildItem -Recurse sampleGraphMini.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='preview'; 'nodeLabelShow'=$true; nodeLabelColor='Gray'; }
+  @{op='layouts'; values=@(
+    @{name='NoOp'; steps=200; exportEach=10;
+      export=@{op='export';file=$outFile; resolution=@(400,400); timestamp=$true;
+        PNGExporter=@{ centerOnStart=@(0,0); centerOnEnd=@('nodeX','nodeY'); findNode='1'; drawDebug=$true; }
+      }
+    }
+  )}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+
+$gifFile = "$dir\output$(Get-Date -Format FileDateTime).gif"
+& $magickExe -delay 0 -loop 0 -dispose previous "$dir\frame*.png" $gifFile
+gci $dir frame*.png | Remove-Item
+```
+<img src="https://github.com/user-attachments/assets/0e6ae553-a68b-4e9d-9b8b-66bbd2585754" width="240"/>
+
+
+
 ## View scaling
 
 You can adjust how big or how small your graph will appear on rendered image by providing **scaling** parameter to PNGExporter. Scaling=1 means model coordinates and image pixels map 1:1. In example below you can see nodes with y = 200/-200 are exactly on the edge of an image, because height = 400 and center is on 0. Set scaling=0.5 to zoom out.
@@ -376,12 +402,13 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ```
 <img src="https://github.com/user-attachments/assets/86bf8f5a-4ac1-42c5-a3af-8a3100e5fd19" width="240"/>
 
+
 When export is in layout loop, you can specify desired initial and final values for scaling:
 
 ```powershell
 $graphFile = Get-ChildItem -Recurse sampleGraphMini.gml
 $dir = $graphFile.Directory
-$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+$outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
 
 @(
   @{op='import'; file=$graphFile.FullName }
@@ -397,7 +424,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 
 $outFile = "$dir\output.gif"
 & $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" $outFile
-gci $dir *.png | Remove-Item
+gci $dir frame*.png | Remove-Item
 ```
 <img src="https://github.com/user-attachments/assets/0d76b8a6-3328-4700-8faf-3f1e62c58c34" width="240"/>
 
@@ -460,7 +487,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
   @{op='layouts'; values=@(
    @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.01; Scaling=20; steps=40; exportEach=1;
       export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true
-       PNGExporter=@{scaling=0.6; centerOnX='nodeX'; centerOnY='nodeY'; findNode="2" }
+       PNGExporter=@{scaling=0.6; centerOn=@('nodeX','nodeY'); findNode="2" }
       }
    }
 )}
