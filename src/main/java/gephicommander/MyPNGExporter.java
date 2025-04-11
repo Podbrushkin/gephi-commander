@@ -4,7 +4,6 @@ import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Image;
 import java.awt.geom.Point2D;
-import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.OutputStream;
 
@@ -35,7 +34,6 @@ class MyPNGExporter extends PNGExporter {
 
     private JsonObject options = new JsonObject();
     private static int iteration = 0;
-    private static String scalingExpr = null;
 
     private ProgressTicket progress;
     private boolean cancel = false;
@@ -47,19 +45,14 @@ class MyPNGExporter extends PNGExporter {
     private int margin = 4;
     private G2DTarget target;
     private Color oldColor;
-
-    private Float scaling = 1f;
+    
     private static JsonObject previousInfo;
     private Node node;
-    private Point2D.Float pointTr;
 
     public MyPNGExporter(){}
     public MyPNGExporter(JsonObject options) {
         super();
         this.options = options;
-        if (options.has("scaling")) {
-            scalingExpr = options.get("scaling").getAsString();
-        }
         if (options.has("findNode")) {
             var jsonPrim = options.get("findNode").getAsJsonPrimitive();
             if (jsonPrim.isString()) {
@@ -136,17 +129,20 @@ class MyPNGExporter extends PNGExporter {
             
             
 
-            if (options.has("scalingStart") && options.has("scalingEnd")) {
-                var scalingStart = options.get("scalingStart").getAsFloat();
-                var scalingEnd = options.get("scalingEnd").getAsFloat();
-                // engine.put("scalingStart", scalingStart);
-                // engine.put("scalingEnd", scalingEnd);
-                // scalingExpr = "0.6+(i*each/steps)*(1-0.6)";
+            float scaling = target.getScaling();
+            if (options.has("scalingStart") || options.has("scalingEnd")) {
+                var scalingStart = options.has("scalingStart") ? 
+                    options.get("scalingStart").getAsFloat() : 1f;
+                
+                var scalingEnd = options.has("scalingEnd") ? 
+                    options.get("scalingEnd").getAsFloat() : 1f;
+                
                 scaling = scalingStart+(iteration*(float)exportEach/(float)exportSteps)*(scalingEnd-scalingStart);
-                System.out.printf("Scaling: %s > %s. Current: %s%n",scalingStart,scalingEnd,scaling);
+                System.out.printf("Scaling(start=%s;end=%s). Current: %s%n",scalingStart,scalingEnd,scaling);
                 target.setScaling(scaling);
             }
-            else if (scalingExpr != null) {
+            else if (options.has("scaling")) {
+                String scalingExpr = options.get("scaling").getAsString();
                 scaling = ((Number)engine.eval(scalingExpr)).floatValue();
                 target.setScaling(scaling);
             }

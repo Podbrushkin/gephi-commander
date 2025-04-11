@@ -357,6 +357,25 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ```
 ![sampleGraphMini](https://github.com/user-attachments/assets/ed0baab0-184c-4a8c-b358-f60e48019880)
 
+## View scaling
+
+You can adjust how big or how small your graph will appear on rendered image by providing **scaling** parameter to PNGExporter. Scaling=1 means model coordinates and image pixels map 1:1. In example below you can see nodes with y = 200/-200 are exactly on the edge of an image, because height = 400 and center is on 0. Set scaling=0.5 to zoom out.
+
+```powershell
+$graphFile = Get-Item .\sampleGraphMini.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='preview'; 'nodeLabelShow'=$true; nodeLabelColor='Gray'; }
+  @{op='export';file=$outFile; resolution=@(400,400);
+       PNGExporter=@{ scaling=1; centerOn=@(0,0); drawDebug=$true; }
+  }
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+```
+<img src="https://github.com/user-attachments/assets/86bf8f5a-4ac1-42c5-a3af-8a3100e5fd19" width="240"/>
+
 ## Create GIF
 ```powershell
 $magickExe = 'C:\Program Files\ImageMagick-7.1.0-Q16-HDRI\magick.exe'
