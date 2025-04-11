@@ -376,6 +376,32 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ```
 <img src="https://github.com/user-attachments/assets/86bf8f5a-4ac1-42c5-a3af-8a3100e5fd19" width="240"/>
 
+When export is in layout loop, you can specify desired initial and final values for scaling:
+
+```powershell
+$graphFile = Get-ChildItem -Recurse sampleGraphMini.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='preview'; 'nodeLabelShow'=$true; nodeLabelColor='Gray'; }
+  @{op='layouts'; values=@(
+    @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.00001; steps=20; exportEach=1;
+      export=@{op='export';file=$outFile; resolution=@(400,400); timestamp=$true;
+        PNGExporter=@{ scalingStart=1; scalingEnd=2; centerOn=@(0,0); drawDebug=$true; }
+      }
+    }
+  )}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+
+$outFile = "$dir\output.gif"
+& $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" $outFile
+gci $dir *.png | Remove-Item
+```
+<img src="https://github.com/user-attachments/assets/0d76b8a6-3328-4700-8faf-3f1e62c58c34" width="240"/>
+
+
 ## Create GIF
 ```powershell
 $magickExe = 'C:\Program Files\ImageMagick-7.1.0-Q16-HDRI\magick.exe'
