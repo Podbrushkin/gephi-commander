@@ -36,8 +36,6 @@ class MyPNGExporter extends PNGExporter {
     private JsonObject options = new JsonObject();
     private static int iteration = 0;
     private static String scalingExpr = null;
-    private static String translateXExpr = null;
-    private static String translateYExpr = null;
 
     private ProgressTicket progress;
     private boolean cancel = false;
@@ -61,12 +59,6 @@ class MyPNGExporter extends PNGExporter {
         this.options = options;
         if (options.has("scaling")) {
             scalingExpr = options.get("scaling").getAsString();
-        }
-        if (options.has("translateX")) {
-            translateXExpr = options.get("translateX").getAsString();
-        }
-        if (options.has("translateY")) {
-            translateYExpr = options.get("translateY").getAsString();
         }
         if (options.has("findNode")) {
             var jsonPrim = options.get("findNode").getAsJsonPrimitive();
@@ -158,6 +150,8 @@ class MyPNGExporter extends PNGExporter {
                 scaling = ((Number)engine.eval(scalingExpr)).floatValue();
                 target.setScaling(scaling);
             }
+            engine.put("sc", scaling);
+
             if (node != null) {
                 var point = new Point2D.Float(node.x(),node.y());
                 
@@ -178,40 +172,26 @@ class MyPNGExporter extends PNGExporter {
                 System.out.printf("centerOn evaluated to %s %s %n",x,y);
                 centerOnModelCoord(target, x, y);
             }
-            if (options.has("centerOnX") ^ options.has("centerOnY"))
-                throw new IllegalArgumentException("centerOnX, centerOnY: either both or none.");
 
-            if ((options.has("centerOnX") || options.has("centerOnY")) &&
-                (options.has("translateX") || options.has("translateY"))) 
-                throw new IllegalArgumentException("centerOnX/Y and translateX/Y cannot be used together.");
+            if (options.has("centerOn") && options.has("translate")) 
+                throw new IllegalArgumentException("PNGExporter.centerOn and translate cannot be used together.");
             
             
-            var translateX = target.getTranslate().getX();
-            var translateY = target.getTranslate().getY();
-            if (translateXExpr != null) {
-                String expressionLocal = translateXExpr
-                    .replaceAll("\\bi\\b", String.valueOf(iteration))
-                    .replaceAll("\\bw\\b", String.valueOf(widthImg))
-                    .replaceAll("\\bh\\b", String.valueOf(heightImg))
-                    .replaceAll("\\bsc\\b", String.valueOf(scaling));
-                Number value = (Number)engine.eval(expressionLocal);
-                translateX = value.floatValue();
+            if (options.has("translate")) {
+                var el = options.get("translate");
+                if (!el.isJsonArray() || el.getAsJsonArray().size() != 2)
+                    throw new IllegalArgumentException("PNGExporter.translate should be an array of 2 elements - x and y.");
+                
+                String xExpression = el.getAsJsonArray().get(0).getAsString();
+                String yExpression = el.getAsJsonArray().get(1).getAsString();
+
+                Float xTranslate = ((Number)engine.eval(xExpression)).floatValue();
+                Float yTranslate = ((Number)engine.eval(yExpression)).floatValue();
+
+                target.getTranslate().set(xTranslate, yTranslate);
             }
-            if (translateYExpr != null) {
-                String expressionLocal = translateYExpr
-                    .replaceAll("\\bi\\b", String.valueOf(iteration))
-                    .replaceAll("\\bw\\b", String.valueOf(widthImg))
-                    .replaceAll("\\bh\\b", String.valueOf(heightImg))
-                    .replaceAll("\\bsc\\b", String.valueOf(scaling));
-                Number value = (Number)engine.eval(expressionLocal);
-                translateY = value.floatValue();
-            }
-            target.getTranslate().set(translateX, translateY);
-            // System.out.println("MyPNGExporter expressons finish");
             // engine.put("bounds", GephiStarter.getGraphBounds(0.01f).toString());
             
-            
-
 
             target.refresh();
             
@@ -269,7 +249,8 @@ class MyPNGExporter extends PNGExporter {
                 // srcGraphics.drawLine(width/2, height/2, (int)pointTr.x, (int)pointTr.y);
                 // srcGraphics.fillOval(0, 0, width/100, height/100);
                 var str = String.format("sc=%s\ntr=%s",target.getScaling(),target.getTranslate());
-                var font = imgGraphics.getFont().deriveFont(32f);
+                float fontSize = heightImg/18;  // Ok for any resolution
+                var font = imgGraphics.getFont().deriveFont(fontSize);
                 imgGraphics.setFont(font);
                 imgGraphics.drawString(str,0,(int)(heightImg*0.95));
             }

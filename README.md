@@ -338,6 +338,24 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ```
 ![sampleGraphMini](https://github.com/user-attachments/assets/dbe61d7b-086e-403d-83cf-01b51d14b721)
 
+## View translate
+
+You can manually pan viewport by providing translate(x,y) values. translate=0,0 with scaling=1 always puts 0,0 model coordinate to the top left corner of an image:
+
+```powershell
+$graphFile = Get-Item .\sampleGraphMini.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='preview'; 'nodeLabelShow'=$true; nodeLabelColor='Gray'; }
+  @{op='export';file=$outFile; resolution=@(320,240);
+       PNGExporter=@{ scaling=1; translate=@(0,0); drawDebug=$true; }
+  }
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+```
+![sampleGraphMini](https://github.com/user-attachments/assets/ed0baab0-184c-4a8c-b358-f60e48019880)
 
 ## Create GIF
 ```powershell
