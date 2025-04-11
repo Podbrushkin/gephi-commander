@@ -164,9 +164,15 @@ class MyPNGExporter extends PNGExporter {
                 engine.put("nodeX",point.x);
                 engine.put("nodeY",point.y);
             }
-            if (options.has("centerOnX") && options.has("centerOnY")) {
-                String exprX = options.get("centerOnX").getAsString();
-                String exprY = options.get("centerOnY").getAsString();
+            if (options.has("centerOn")) {
+                var el = options.get("centerOn");
+                if (!el.isJsonArray() || el.getAsJsonArray().size() != 2)
+                    throw new IllegalArgumentException("centerOn should be an array of 2 elements - x and y.");
+
+                var point = el.getAsJsonArray();
+                String exprX = point.get(0).getAsString();
+                String exprY = point.get(1).getAsString();
+                
                 float x = ((Number)engine.eval(exprX)).floatValue();
                 float y = ((Number)engine.eval(exprY)).floatValue();
                 System.out.printf("centerOn evaluated to %s %s %n",x,y);

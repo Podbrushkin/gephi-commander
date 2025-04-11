@@ -319,6 +319,26 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ```
 <img src="https://github.com/user-attachments/assets/4f934bfc-37ad-4d9f-b007-b1aa1d142936" width="240"/>
 
+## View center on
+
+When exporting to PNG, you can provide a coordinate which should be in center of an image.
+
+```powershell
+$graphFile = Get-Item .\sampleGraphMini.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='preview'; 'nodeLabelShow'=$true; nodeLabelColor='Gray'; }
+  @{op='export';file=$outFile; resolution=@(320,240);
+       PNGExporter=@{ centerOn=@(100,200); }
+  }
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+```
+![sampleGraphMini](https://github.com/user-attachments/assets/dbe61d7b-086e-403d-83cf-01b51d14b721)
+
+
 ## Create GIF
 ```powershell
 $magickExe = 'C:\Program Files\ImageMagick-7.1.0-Q16-HDRI\magick.exe'
