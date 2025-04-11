@@ -218,7 +218,7 @@ $outFile = ($graphFile.BaseName+'.png')
   @{op='export';file=$outFile; resolution=@(320,240)}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 ```
-![coloredGraphMini](https://github.com/user-attachments/assets/ca81ac84-1ec5-43f2-9145-517b514b6edc)
+![sampleGraphMini](https://github.com/user-attachments/assets/11f55752-d746-4910-a15b-736712986841)
 
 ## Color nodes by community (Modularity)
 
@@ -382,18 +382,19 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
    }
 )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
-
-& $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" "$dir\output.gif"
+$outFile = "$dir\output.gif"
+& $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" $outFile
 gci $dir *.png | Remove-Item
-start "$dir\output.gif"
 ```
 ![output](https://github.com/user-attachments/assets/97eea1c9-5fd5-4e62-91db-60d5094dac17)
 
 ## Live preview
 
-It will display a window where you can examine appearance of your graph. Avoid it when perfomance is needed.
+It will display a window where you can examine appearance of your graph. Avoid it when perfomance is needed. Use fps=0 to disable auto refresh (it still will be refreshed each time you zoom/pan). Put **livePreview** after layouts when working with large graphs and complex visualizations.
 
 ```powershell
+$graphFile = Get-ChildItem -recurse lesmis.gml
+
 @(
   @{op='import'; file=$graphFile.FullName }
   @{op='livePreview'; fps=30}
