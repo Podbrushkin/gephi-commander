@@ -20,9 +20,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -40,7 +42,6 @@ import org.gephi.appearance.api.PartitionFunction;
 import org.gephi.appearance.plugin.PartitionElementColorTransformer;
 import org.gephi.appearance.plugin.RankingElementColorTransformer;
 import org.gephi.appearance.plugin.RankingNodeSizeTransformer;
-import org.gephi.appearance.plugin.RankingSizeTransformer;
 import org.gephi.appearance.plugin.palette.Palette;
 import org.gephi.appearance.plugin.palette.PaletteManager;
 import org.gephi.filters.api.FilterController;
@@ -110,22 +111,64 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 
 public class GephiCommander {
+    static int layoutIterationsTotal = 0;
+    static Integer currentIteration = null;
+    static Map<Integer, JsonArray> iterToOperation = new HashMap<>();
     
     public static void main(String[] args) {
-        JsonArray options = null;
+        JsonArray optionsGlobal = null;
         try (Reader reader = args[args.length-1].equals("-") ?
                 new InputStreamReader(System.in) :
                 new FileReader(args[0])) {
-                    options = JsonParser.parseReader(reader).getAsJsonArray();
+                    optionsGlobal = JsonParser.parseReader(reader).getAsJsonArray();
         } catch (Exception e) {
             System.err.println("Last arg should be a filepath or '-' to read from stdin.");
             e.printStackTrace();
             System.exit(1);
         }
+        layoutIterationsTotal = countLayoutIterationsTotal(optionsGlobal);
+        System.out.println("IterationsTotal: "+layoutIterationsTotal);
 
         Locale.setDefault(Locale.ENGLISH);  // Ignore Gephi localization
 
-        for (var opEl : options) {
+        // Map<Integer,List<JsonObject>> iterToOperation = new HashMap<>();
+        /* for (var op : optionsGlobal) {
+            var obj = op.getAsJsonObject();
+            if (obj.has("iteration")) {
+                int iter = obj.get("iteration").getAsInt();
+                var list = iterToOperation.getOrDefault(iter, List.of());
+            }
+        } */
+        /* iterToOperation = StreamSupport.stream(optionsGlobal.spliterator(),false)
+            .map(JsonElement::getAsJsonObject)
+            .filter(obj -> obj.has("iteration"))
+            .collect(Collectors.groupingBy(
+                obj -> obj.get("iteration").getAsInt(),
+                new JsonArray()
+            )); */
+        
+        for (JsonElement element : optionsGlobal) {
+            if (element.isJsonObject()) {
+                JsonObject obj = element.getAsJsonObject();
+                if (obj.has("iteration")) {
+                    int iteration = obj.get("iteration").getAsInt();
+                    iterToOperation.computeIfAbsent(iteration, k -> new JsonArray()).add(obj);
+                    optionsGlobal.remove(obj);
+                }
+            }
+        }
+        
+        // for (var op : optionsGlobal) {
+        //     if (op.getAsJsonObject().has("iteration"))
+        //         optionsGlobal.remove(op);
+        // }
+        
+
+        processOperations(optionsGlobal);
+        
+    }
+    private static void processOperations(JsonArray operations) {
+        for (var opEl : operations) {
             var op = opEl.getAsJsonObject();
             var opName = op.get("op").getAsString();
             switch (opName) {
@@ -174,7 +217,17 @@ public class GephiCommander {
                     break;
             }
         }
-        
+    }
+
+    private static int countLayoutIterationsTotal(JsonArray optionsGlobal) {
+        return StreamSupport.stream(optionsGlobal.spliterator(), false)
+            .map(JsonElement::getAsJsonObject)
+            .filter(obj -> obj.get("op").getAsString().equals("layouts"))
+            .flatMap(op -> StreamSupport.stream(op.get("values").getAsJsonArray().spliterator(),false))
+            .map(JsonElement::getAsJsonObject)
+            .map(l -> l.get("steps").getAsInt())
+            .reduce((x,y) -> x+y)
+            .orElse(0);
     }
     
     private static void showLivePreview(JsonObject op) {
@@ -247,8 +300,6 @@ public class GephiCommander {
             }
         }
         System.out.println("images saved to "+outputDir);
-        // Then use FFmpeg to combine:
-        // ffmpeg -framerate 10 -i frame_%03d.png -c:v libx264 -r 30 -pix_fmt yuv420p out.mp4
     }
 
     private static void printCounts(Graph graph) {
@@ -1299,6 +1350,8 @@ public class GephiCommander {
         for (var entry : options.entrySet()) {
             String key = entry.getKey();
             String dotKey = convertCamelToDot(key);
+
+            if (key.equals("iteration")) continue;
             
             setPreviewProperty(model, dotKey, entry.getValue());
         }
@@ -1449,8 +1502,7 @@ public class GephiCommander {
         JsonObject exportOptions = layoutOptions.has("export") ? 
             layoutOptions.get("export").getAsJsonObject() : null;
         
-        int currentAlgoSteps = layoutOptions.has("steps") ? 
-            layoutOptions.get("steps").getAsInt() : 200;
+        int currentAlgoSteps = layoutOptions.get("steps").getAsInt();
 
         Integer currentAlgoEach = layoutOptions.has("exportEach") ?
             layoutOptions.get("exportEach").getAsInt() : null;
@@ -1464,19 +1516,26 @@ public class GephiCommander {
         
         System.out.printf("Applying layout %s with %s steps...%n", layoutName, currentAlgoSteps);
         layout.initAlgo();
-        for (int i = 0; i < currentAlgoSteps; i++) {
+        for (currentIteration = 0; currentIteration < currentAlgoSteps; currentIteration++) {
             layout.goAlgo();
 
-            if (pngOptions != null &&
-                currentAlgoEach != null &&
-                i % currentAlgoEach == 0) {
-                
-                pngOptions.add("_currentLayoutIter", new JsonPrimitive(i));
+            JsonArray opsToDo = iterToOperation.get(currentIteration);
+            if (opsToDo != null && opsToDo.size() != 0) {
+                processOperations(opsToDo);
+            }
+
+            if (pngOptions != null) {
+                pngOptions.add("_currentLayoutIter", new JsonPrimitive(currentIteration));
                 pngOptions.add("_currentLayoutEach", new JsonPrimitive(currentAlgoEach));
                 pngOptions.add("_currentLayoutTotal", new JsonPrimitive(currentAlgoSteps));
+            }
+
+            if (currentAlgoEach != null &&
+                currentIteration % currentAlgoEach == 0) {
                 export(exportOptions);
             }
         }
+        currentIteration = null;
         layout.endAlgo();
         System.out.println("Applying "+ layoutName + " is finished.");
     }

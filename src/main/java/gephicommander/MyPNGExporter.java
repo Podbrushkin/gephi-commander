@@ -121,9 +121,9 @@ class MyPNGExporter extends PNGExporter {
             
 
             // Please change
-            Integer steps = options.get("_currentLayoutTotal").getAsInt();
-            Integer exportEach = options.get("_currentLayoutEach").getAsInt();
-            Integer step = options.get("_currentLayoutIter").getAsInt();
+            Integer steps = options.has("_currentLayoutTotal") ? options.get("_currentLayoutTotal").getAsInt() : null;
+            Integer exportEach = options.has("_currentLayoutEach") ? options.get("_currentLayoutEach").getAsInt() : null;
+            Integer step = options.has("_currentLayoutIter") ? options.get("_currentLayoutIter").getAsInt() : null;
             
             engine.put("steps", steps);
             engine.put("exportEach", exportEach);

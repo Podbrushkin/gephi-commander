@@ -208,8 +208,9 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 If nodes in your file already have a color property:
 
 ```powershell
-$graphFile = Get-Item sampleGraphMini.gml
-$outFile = ($graphFile.BaseName+'.png')
+$graphFile = Get-ChildItem -Recurse sampleGraphMini.gml
+$dir = $graphFile.Directory
+$outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
 
 @(
   @{op='import'; file=$graphFile.FullName }
@@ -217,6 +218,10 @@ $outFile = ($graphFile.BaseName+'.png')
   @{op='colorNodesBy'; column='color'; mode='value'; }
   @{op='export';file=$outFile; resolution=@(320,240)}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+
+$outFile = "$dir\output.gif"
+& $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" $outFile
+gci $dir frame*.png | Remove-Item
 ```
 ![sampleGraphMini](https://github.com/user-attachments/assets/11f55752-d746-4910-a15b-736712986841)
 
@@ -247,7 +252,7 @@ Edges with the same value in specified column will have the same color.
 I.e. edges in **sampleGraphMini.gml** have **group** property with value of a, b or c, so they will be colored to 3 random colors total:
 
 ```powershell
-$graphFile = Get-Item .\sampleGraphMini.gml
+$graphFile = Get-ChildItem -Recurse sampleGraphMini.gml
 $dir = $graphFile.Directory
 $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 
@@ -306,7 +311,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 If your edges already have a color specified in one of their properties (as in **sampleGraphMini.gml**), use mode=value:
 
 ```powershell
-$graphFile = Get-Item .\sampleGraphMini.gml
+$graphFile = Get-ChildItem -Recurse sampleGraphMini.gml
 $dir = $graphFile.Directory
 $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 
@@ -324,7 +329,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 When exporting to PNG, you can provide a coordinate which should be in center of an image.
 
 ```powershell
-$graphFile = Get-Item .\sampleGraphMini.gml
+$graphFile = Get-ChildItem -Recurse sampleGraphMini.gml
 $dir = $graphFile.Directory
 $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 
@@ -343,7 +348,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 You can manually pan viewport by providing translate(x,y) values. translate=0,0 with scaling=1 always puts 0,0 model coordinate to the top left corner of an image:
 
 ```powershell
-$graphFile = Get-Item .\sampleGraphMini.gml
+$graphFile = Get-ChildItem -Recurse sampleGraphMini.gml
 $dir = $graphFile.Directory
 $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 
@@ -375,8 +380,8 @@ $outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
   )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
-$gifFile = "$dir\output$(Get-Date -Format FileDateTime).gif"
-& $magickExe -delay 0 -loop 0 -dispose previous "$dir\frame*.png" $gifFile
+$outFile = "$dir\output$(Get-Date -Format FileDateTime).gif"
+& $magickExe -delay 0 -loop 0 -dispose previous "$dir\frame*.png" $outFile
 gci $dir frame*.png | Remove-Item
 ```
 <img src="https://github.com/user-attachments/assets/0e6ae553-a68b-4e9d-9b8b-66bbd2585754" width="240"/>
@@ -388,7 +393,7 @@ gci $dir frame*.png | Remove-Item
 You can adjust how big or how small your graph will appear on rendered image by providing **scaling** parameter to PNGExporter. Scaling=1 means model coordinates and image pixels map 1:1. In example below you can see nodes with y = 200/-200 are exactly on the edge of an image, because height = 400 and center is on 0. Set scaling=0.5 to zoom out.
 
 ```powershell
-$graphFile = Get-Item .\sampleGraphMini.gml
+$graphFile = Get-ChildItem -Recurse sampleGraphMini.gml
 $dir = $graphFile.Directory
 $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 
@@ -435,7 +440,7 @@ $magickExe = 'C:\Program Files\ImageMagick-7.1.0-Q16-HDRI\magick.exe'
 
 $graphFile = Get-ChildItem -Recurse dolphins.gml
 $dir = $graphFile.Directory
-$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+$outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
 @(
   @{op='import'; file=$graphFile.FullName }
   @{op='layouts'; values=@(
@@ -447,6 +452,7 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 
 $outFile = "$dir\output.gif"
 & $magickExe -delay 0 -loop 0 "$dir\*.png" $outFile
+gci $dir frame*.png | Remove-Item
 ```
 ![output](https://github.com/user-attachments/assets/3f7601cc-c693-4656-984e-d48b3aaeffb7)
 
@@ -454,7 +460,7 @@ $outFile = "$dir\output.gif"
 ```powershell
 $graphFile = get-childitem -recurse football.gml
 $dir = $graphFile.Directory
-$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+$outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
 @(
   @{op='import'; file=$graphFile.FullName }
   @{op='statistics';values=@('Modularity') }
@@ -469,7 +475,8 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
 $outFile = "$dir\output.gif"
-& $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" $outFile
+& $magickExe -delay 0 -loop 0 -dispose previous "$dir\frame*.png" $outFile
+gci $dir frame*.png | Remove-Item
 ```
 <img src="https://github.com/user-attachments/assets/d3fee647-247d-459c-afbf-42648440789a" width="240"/>
 
