@@ -121,9 +121,10 @@ class MyPNGExporter extends PNGExporter {
             
 
             // Please change
-            Integer steps = GephiCommander.getCurrentAlgoSteps();
-            Integer exportEach = GephiCommander.getCurrentAlgoEach();
-            Integer step = GephiCommander.getCurrentAlgoIteration();
+            Integer steps = options.get("_currentLayoutTotal").getAsInt();
+            Integer exportEach = options.get("_currentLayoutEach").getAsInt();
+            Integer step = options.get("_currentLayoutIter").getAsInt();
+            
             engine.put("steps", steps);
             engine.put("exportEach", exportEach);
             // engine.put("i", iterationGlobal);

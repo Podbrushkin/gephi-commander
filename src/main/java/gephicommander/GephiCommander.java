@@ -107,6 +107,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 
 public class GephiCommander {
     
@@ -398,11 +399,7 @@ public class GephiCommander {
                 }
                 case "NoOp" : {
                     var layout = new NoOpLayout();
-                    if (options.has("export")) {
-                        runAlgoWithExporting(layout,options);
-                    } else {
-                        runAlgoFor(layout, options);
-                    }
+                    runLayout(layout, options);
                     break;
                 }
                 default : System.out.println("No such layout: "+name);
@@ -889,11 +886,8 @@ public class GephiCommander {
         layout.setGraphModel(graphModel);
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
-        if (options.has("export")) {
-            runAlgoWithExporting(layout,options);
-        } else {
-            runAlgoFor(layout, options);
-        }
+        
+        runLayout(layout,options);
     }
 
     private static void applyYifanHu(GraphModel graphModel, JsonObject options) {
@@ -902,11 +896,8 @@ public class GephiCommander {
         layout.setGraphModel(graphModel);
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
-        if (options.has("export")) {
-            runAlgoWithExporting(layout,options);
-        } else {
-            runAlgoFor(layout, options);
-        }
+        
+        runLayout(layout,options);
     }
 
     private static void applyYifanHuProportional(GraphModel graphModel, JsonObject options) {
@@ -915,11 +906,8 @@ public class GephiCommander {
         layout.setGraphModel(graphModel);
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
-        if (options.has("export")) {
-            runAlgoWithExporting(layout,options);
-        } else {
-            runAlgoFor(layout, options);
-        }
+        
+        runLayout(layout,options);
     }
     
     private static void applyOpenOrd(GraphModel graphModel, JsonObject options) {
@@ -928,14 +916,14 @@ public class GephiCommander {
         layout.setGraphModel(graphModel);
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
-        runAlgoFor(layout, options);
+        runLayout(layout, options);
     }
     private static void applyRandomLayout(GraphModel graphModel, JsonObject options) {
         var layout =  new RandomLayout(new Random(), 50);
         layout.setGraphModel(graphModel);
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
-        runAlgoFor(layout, options);
+        runLayout(layout, options);
     }
     private static void applyNoverlapLayout(JsonObject options) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
@@ -945,7 +933,7 @@ public class GephiCommander {
         layout.resetPropertiesValues();
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
-        runAlgoFor(layout, options);
+        runLayout(layout, options);
     }
 
     private static void applyFruchtermanReingoldLayout(JsonObject options) {
@@ -956,11 +944,7 @@ public class GephiCommander {
         layout.resetPropertiesValues();
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
-        if (options.has("export")) {
-            runAlgoWithExporting(layout,options);
-        } else {
-            runAlgoFor(layout, options);
-        }
+        runLayout(layout, options);
     }
 
     private static void printLayoutProperties(Layout layout) {
@@ -1460,73 +1444,41 @@ public class GephiCommander {
         }
     }
 
-    private static void runAlgoFor(Layout layout, int steps) {
-        System.out.printf("Applying layout %s with %s steps... ",layout.getClass().getSimpleName(), steps); 
-        layout.initAlgo();
-        for (int k = 0; k < steps; k++) {
-            layout.goAlgo();
-        }
-        layout.endAlgo();
-        System.out.println("Done.");
-    }
-    private static void runAlgoForMaximum(Layout layout, int maxSteps) {
-        System.out.printf("Applying layout %s with no more than %s steps...%n",layout.getClass().getSimpleName(), maxSteps); 
-        layout.initAlgo();
-        int stepCount = 1;
-        for (; stepCount <= maxSteps && layout.canAlgo(); stepCount++) {
-            layout.goAlgo();
-        }
-        layout.endAlgo();
-        System.out.printf("It was %s steps.%n",stepCount);
-    }
-    private static void runAlgoFor(Layout layout, JsonObject options) {
-        if (options.has("steps")) {
-            runAlgoFor(layout, options.get("steps").getAsInt());
-        }
-        else {
-            int maxSteps = options.has("maxSteps") ? options.get("maxSteps").getAsInt() : Integer.MAX_VALUE;
-            runAlgoForMaximum(layout, maxSteps);
-        }
-    }
-
-    private static Integer currentAlgoEach = null;
-    static Integer getCurrentAlgoEach() {
-        return currentAlgoEach;
-    }
-    private static Integer currentAlgoSteps = null;
-    static Integer getCurrentAlgoSteps() {
-        return currentAlgoSteps;
-    }
-    private static Integer currentAlgoIteration = null;
-    static Integer getCurrentAlgoIteration() {
-        return currentAlgoIteration;
-    }
-    
-    private static void runAlgoWithExporting(Layout layout, JsonObject layoutOptions) {
+    private static void runLayout(Layout layout, JsonObject layoutOptions) {
         String layoutName = layout.getClass().getSimpleName();
-        var exportOptions = layoutOptions.get("export").getAsJsonObject();
-        int each = layoutOptions.get("exportEach").getAsInt();
-        int steps = layoutOptions.get("steps").getAsInt();
+        JsonObject exportOptions = layoutOptions.has("export") ? 
+            layoutOptions.get("export").getAsJsonObject() : null;
+        
+        int currentAlgoSteps = layoutOptions.has("steps") ? 
+            layoutOptions.get("steps").getAsInt() : 200;
 
-        // These can be used by PNGExporter 🫡
-        currentAlgoEach = each;
-        currentAlgoSteps = steps;
-
-        System.out.printf("Applying layout %s with %s steps...%n", layoutName, steps);
+        Integer currentAlgoEach = layoutOptions.has("exportEach") ?
+            layoutOptions.get("exportEach").getAsInt() : null;
+        
+        JsonObject pngOptions = null;
+        if (layoutOptions.has("export") && 
+            layoutOptions.get("export").getAsJsonObject().has("PNGExporter")) {
+                pngOptions = layoutOptions.get("export").getAsJsonObject().get("PNGExporter").getAsJsonObject();
+        }
+        
+        
+        System.out.printf("Applying layout %s with %s steps...%n", layoutName, currentAlgoSteps);
         layout.initAlgo();
-        for (int k = 1; k <= steps; k++) {
-            currentAlgoIteration = k;
+        for (int i = 0; i < currentAlgoSteps; i++) {
             layout.goAlgo();
-            if (k % each == 0 || k == steps) {
+
+            if (pngOptions != null &&
+                currentAlgoEach != null &&
+                i % currentAlgoEach == 0) {
+                
+                pngOptions.add("_currentLayoutIter", new JsonPrimitive(i));
+                pngOptions.add("_currentLayoutEach", new JsonPrimitive(currentAlgoEach));
+                pngOptions.add("_currentLayoutTotal", new JsonPrimitive(currentAlgoSteps));
                 export(exportOptions);
             }
         }
         layout.endAlgo();
         System.out.println("Applying "+ layoutName + " is finished.");
-
-        currentAlgoEach = null;
-        currentAlgoSteps = null;
-        currentAlgoIteration = null;
     }
 
     private static Color parseColor(String colorValue) {

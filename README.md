@@ -479,7 +479,7 @@ Put a node id into findNode and reference it in centerOnX/Y expressions:
 ```powershell
 $graphFile = get-childitem -recurse dolphins.gml
 $dir = $graphFile.Directory
-$outFile = Join-Path $dir ($graphFile.BaseName+'.png')
+$outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
 
 @(
   @{op='import'; file=$graphFile.FullName }
@@ -493,8 +493,8 @@ $outFile = Join-Path $dir ($graphFile.BaseName+'.png')
 )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 $outFile = "$dir\output.gif"
-& $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" $outFile
-gci $dir *.png | Remove-Item
+& $magickExe -delay 0 -loop 0 -dispose previous "$dir\frame*.png" $outFile
+gci $dir frame*.png | Remove-Item
 ```
 ![output](https://github.com/user-attachments/assets/97eea1c9-5fd5-4e62-91db-60d5094dac17)
 
