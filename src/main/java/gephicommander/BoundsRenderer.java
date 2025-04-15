@@ -33,8 +33,6 @@ public class BoundsRenderer implements Renderer {
     private float maxX = Float.MIN_VALUE;
     private float minY = Float.MAX_VALUE;
     private float maxY = Float.MIN_VALUE;
-    private float[] leftToRightPercentiles = new float[101];
-    private float[] bottomToTopPercentiles = new float[101];
 
     @Override
     public String getDisplayName() {
@@ -47,55 +45,14 @@ public class BoundsRenderer implements Renderer {
             return;
         }
         
-        // Reset bounds
-        minX = Float.MAX_VALUE;
-        maxX = Float.MIN_VALUE;
-        minY = Float.MAX_VALUE;
-        maxY = Float.MIN_VALUE;
-        
-        // Collect all node positions
-        var graph = Lookup.getDefault().lookup(GraphController.class).getGraphModel().getGraphVisible();
-        
-        float[] xPositions = new float[graph.getNodeCount()];
-        Float[] yPositions = new Float[graph.getNodeCount()];
-        Float[] yPositionsG2d = new Float[graph.getNodeCount()];
-        var nodes = graph.getNodes();
-        int i = 0;
-        for (var node : nodes) {
-            
-            float x = node.x();
-            float y = node.y();
-            xPositions[i] = x;
-            yPositions[i] = y;
-            yPositionsG2d[i] = -y; // drawing y coord = negative data y
-            i++;
-            
-            // Update bounds
-            minX = Math.min(minX, x);
-            maxX = Math.max(maxX, x);
-            minY = Math.min(minY, y);
-            maxY = Math.max(maxY, y);
-        }
-        
-        // Calculate percentiles
-        Arrays.sort(xPositions);
-        Arrays.sort(yPositions);//, Comparator.reverseOrder());
-        Arrays.sort(yPositionsG2d, Comparator.reverseOrder());
         
         
-        // System.out.println(Arrays.toString(xPositions));
-        // System.out.println(Arrays.toString(yPercentiles));
-        // System.out.println(Arrays.toString(yPositions));
-        for (int p = 0; p <= 100; p++) {
-            int index = (int) Math.round((p / 100.0) * (xPositions.length - 1));
-            leftToRightPercentiles[p] = xPositions[index];
-            bottomToTopPercentiles[p] = yPositionsG2d[index];
-        }
     }
 
     @Override
     public void render(Item item, RenderTarget target, PreviewProperties properties) {
-        if (target instanceof G2DTarget && properties.getBooleanValue(ENABLE_DISTRIBUTION_BOX)) {
+        // if (target instanceof G2DTarget && properties.getBooleanValue(ENABLE_DISTRIBUTION_BOX)) {
+        if (target instanceof G2DTarget) {
             renderJava2D((G2DTarget) target, properties);
         }
     }
@@ -104,7 +61,11 @@ public class BoundsRenderer implements Renderer {
         float margin = properties.hasProperty(BOX_MARGIN) ? 
             properties.getFloatValue(BOX_MARGIN) :
             100.0f;
-        drawBounds(target,(int)margin,(int)margin);
+        // drawBounds(target,(int)margin,(int)margin);
+        Graphics2D g2 = target.getGraphics();
+        g2.setColor(Color.GREEN);
+        
+        // drawLine(g2, 0, 0, 100, 100);
     }
 
     private void drawBounds(G2DTarget target, int xPercentile, int yPercentile) {
@@ -112,9 +73,28 @@ public class BoundsRenderer implements Renderer {
             throw new IllegalArgumentException("Percentile should be more than 50");
         Graphics2D g2 = target.getGraphics();
         g2.setColor(Color.GREEN);
+        
+        
 
-        float width = (maxX - minX)/100*xPercentile;
-        float height = (maxY - minY)/100*yPercentile;
+        // float width = (maxX - minX)/100*xPercentile;
+        // float height = (maxY - minY)/100*yPercentile;
+
+        /* //this was active
+        var leftBound = leftToRightPercentiles[100-xPercentile];
+        var rightBound = leftToRightPercentiles[xPercentile];
+        var topBound = bottomToTopPercentiles[yPercentile];
+        var bottomBound = bottomToTopPercentiles[100-yPercentile];
+        width = Math.abs(rightBound-leftBound);
+        height = Math.abs(bottomBound-topBound);
+        // width = 200;
+        // height = 200;
+        g2.draw(new Rectangle2D.Float(
+            leftBound,
+            topBound,
+            width,
+            height
+        )); */
+
         
         // float x = minX/100*xPercentile;
         // float y = -maxY/100*yPercentile;
@@ -131,20 +111,7 @@ public class BoundsRenderer implements Renderer {
         // s = String.format("%s %s%%", leftToRightPercentiles[xPercentile], xPercentile);
         // g2.drawString(s, leftToRightPercentiles[xPercentile], xPercentile);
 
-        var leftBound = leftToRightPercentiles[100-xPercentile];
-        var rightBound = leftToRightPercentiles[xPercentile];
-        var topBound = bottomToTopPercentiles[yPercentile];
-        var bottomBound = bottomToTopPercentiles[100-yPercentile];
-        width = Math.abs(rightBound-leftBound);
-        height = Math.abs(bottomBound-topBound);
-        // width = 200;
-        // height = 200;
-        g2.draw(new Rectangle2D.Float(
-            leftBound,
-            topBound,
-            width,
-            height
-        ));
+        
         // drawHorizontal(g2, (int)topBound);
         
         // drawHorizontal(g2, (int)bottomBound);
@@ -185,6 +152,13 @@ public class BoundsRenderer implements Renderer {
     private void drawVertical(Graphics2D g2, int x) {
         g2.drawLine(x, -1000, x, 1000);
     }
+    private void drawLine(Graphics2D g2, int x, int y, int x1, int y1) {
+        g2.drawLine(x, y, x1, y1);
+        String s = String.format("%s %s", x, y);
+        g2.drawString(s, x, y);
+        s = String.format("%s %s", x1, y1);
+        g2.drawString(s, x1, y1);
+    }
     private void drawRect(Graphics2D g2, float x, float y, float x1, float y1) {
         g2.draw(new Rectangle2D.Float(
             x,
@@ -217,7 +191,9 @@ public class BoundsRenderer implements Renderer {
     @Override
     public boolean isRendererForitem(Item item, PreviewProperties properties) {
         // Return true for the model item (null check for headless mode)
-        return item == null || (properties.getBooleanValue(ENABLE_DISTRIBUTION_BOX) && item instanceof NodeItem);
+        // boolean on = properties.getBooleanValue(ENABLE_DISTRIBUTION_BOX);
+        // return item == null || (on && item instanceof NodeItem);
+        return true;
     }
 
     @Override

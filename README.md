@@ -428,7 +428,7 @@ $outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
 $outFile = "$dir\output.gif"
-& $magickExe -delay 0 -loop 0 -dispose previous "$dir\*.png" $outFile
+& $magickExe -delay 0 -loop 0 -dispose previous "$dir\frame*.png" $outFile
 gci $dir frame*.png | Remove-Item
 ```
 <img src="https://github.com/user-attachments/assets/0d76b8a6-3328-4700-8faf-3f1e62c58c34" width="240"/>

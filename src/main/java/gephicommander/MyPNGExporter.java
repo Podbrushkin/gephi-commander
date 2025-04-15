@@ -9,7 +9,6 @@ import java.io.OutputStream;
 
 import javax.imageio.ImageIO;
 import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 
 import org.gephi.graph.api.Node;
@@ -20,7 +19,6 @@ import org.gephi.preview.api.PreviewModel;
 import org.gephi.preview.api.PreviewProperties;
 import org.gephi.preview.api.PreviewProperty;
 import org.gephi.preview.api.RenderTarget;
-import org.gephi.preview.api.Vector;
 import org.gephi.project.api.Workspace;
 import org.gephi.utils.longtask.spi.LongTask;
 import org.gephi.utils.progress.Progress;
@@ -32,10 +30,9 @@ import com.google.gson.JsonObject;
 
 class MyPNGExporter extends PNGExporter {
     
-    private static ScriptEngine engine = new ScriptEngineManager().getEngineByName("JavaScript");
+    private static ScriptEngine engine = GephiCommander.engine;
 
     private JsonObject options = new JsonObject();
-    private static int iterationGlobal = 0;
 
     private ProgressTicket progress;
     private boolean cancel = false;
@@ -119,16 +116,20 @@ class MyPNGExporter extends PNGExporter {
             }
             // engine.eval(prevExpr+";");
             
-
-            // Please change
-            Integer steps = options.has("_currentLayoutTotal") ? options.get("_currentLayoutTotal").getAsInt() : null;
-            Integer exportEach = options.has("_currentLayoutEach") ? options.get("_currentLayoutEach").getAsInt() : null;
-            Integer step = options.has("_currentLayoutIter") ? options.get("_currentLayoutIter").getAsInt() : null;
             
-            engine.put("steps", steps);
-            engine.put("exportEach", exportEach);
-            // engine.put("i", iterationGlobal);
-            engine.put("step", step);
+            // Integer stepsGlobal = GephiCommander.LayoutStatus.globalIterationsMax;
+            Integer steps = GephiCommander.LayoutStatus.localIterationsMax;
+            Integer exportEach = GephiCommander.LayoutStatus.localExportEach;
+            Integer step = GephiCommander.LayoutStatus.localIteration;
+
+
+            
+            // engine.put("i", step);
+            // engine.put("iMax", steps);
+            // engine.put("exportEach", exportEach);
+            // engine.put("iGlobal", GephiCommander.LayoutStatus.globalIterationsDone);
+            // engine.put("iGlobalMax", GephiCommander.LayoutStatus.globalIterationsMax);
+            
             engine.put("w", widthImg);
             engine.put("h", heightImg);
             
@@ -177,7 +178,8 @@ class MyPNGExporter extends PNGExporter {
                 float x = ((Number)engine.eval(exprX)).floatValue();
                 float y = ((Number)engine.eval(exprY)).floatValue();
                 System.out.printf("centerOn evaluated to %s %s %n",x,y);
-                centerOnModelCoord(target, x, y);
+                var st = CoordUtils.getToCenterOn(widthImg, heightImg, target.getScaling(), new Point2D.Float(x, y));
+                target.getTranslate().set(st.translateX, st.translateY);
             }
             if (options.has("centerOnStart") && options.has("centerOnEnd")) {
                 var elStart = options.get("centerOnStart");
@@ -193,7 +195,8 @@ class MyPNGExporter extends PNGExporter {
                 float currentX = (float)(pointStart.getX() + (float)step / (float)steps * (pointEnd.getX() - pointStart.getX()));
                 float currentY = (float)(pointStart.getY() + (float)step / (float)steps * (pointEnd.getY() - pointStart.getY()));
 
-                centerOnModelCoord(target, currentX, currentY);
+                var st = CoordUtils.getToCenterOn(widthImg, heightImg, target.getScaling(), new Point2D.Float(currentX, currentY));
+                target.getTranslate().set(st.translateX, st.translateY);
                 
             }
 
@@ -219,33 +222,6 @@ class MyPNGExporter extends PNGExporter {
 
             target.refresh();
             
-            
-            
-            
-            
-            
-            // var scaling = target.getScaling();
-            // target.setScaling(0.5f);
-            // target.getTranslate().set(0, 0);
-            /* if (scalingStart != null && scalingStep != null) {
-                var newScaling = scalingStart+(scalingStep*scalingIter);
-                System.out.println("Dynamic scaling:"+newScaling);
-                target.setScaling(newScaling);
-            }
-            else if (options.has("scaling")) {
-                target.setScaling(options.get("scaling").getAsFloat());
-            } */
-            /* if (options.has("translate")) {
-                var transObj = options.get("translate").getAsJsonObject();
-                target.getTranslate().set(transObj.get("x").getAsFloat(),transObj.get("y").getAsFloat());
-            } */
-            /* if (options.has("translateX")) {
-                var transObj = options.get("translateX").getAsString();
-                target.getTranslate().set(transObj.get("x").getAsFloat(),transObj.get("y").getAsFloat());
-            } */
-            // target.refresh();
-            // System.out.printf("target.getHeight()=%s,%ntarget.getScaling()=%s,%ntarget.getTranslate()=%s%n",
-            //     target.getHeight(),target.getScaling(),target.getTranslate()); 
 
             // print useful info
             var info = new JsonObject();
@@ -278,8 +254,17 @@ class MyPNGExporter extends PNGExporter {
                 imgGraphics.setFont(font);
                 imgGraphics.drawString(str,0,(int)(heightImg*0.95));
             }
+
+            if (options.has("drawTranslate") &&
+                options.get("drawTranslate").getAsBoolean() 
+                ) {
+                imgGraphics.setColor(Color.RED);
+                
+                // Why x negative? idk
+                drawLineModel(imgGraphics, 0,0, (int)-target.getTranslate().x, (int)target.getTranslate().y);
+
+            }
             
-            iterationGlobal++;
             BufferedImage img = new BufferedImage(widthImg, heightImg, BufferedImage.TYPE_INT_ARGB);
             img.getGraphics().drawImage(sourceImg, 0, 0, null);
             ImageIO.write(img, "png", stream);
@@ -293,6 +278,21 @@ class MyPNGExporter extends PNGExporter {
         Progress.finish(progress);
 
         return !cancel;
+    }
+    private void drawLineModel(Graphics g2, int mx0, int my0, int mx1, int my1) {
+        var start = CoordUtils.convertCoordModelToView(target, mx0, my0);
+        var end = CoordUtils.convertCoordModelToView(target, mx1, my1);
+
+        int x0 = (int)start.getX();
+        int y0 = (int)start.getY();
+        int x1 = (int)end.getX();
+        int y1 = (int)end.getY();
+
+        g2.drawLine(x0,y0,x1,y1);
+        String s = String.format("%s %s (%s %s)", mx0, my0, x0, y0);
+        g2.drawString(s, x0, y0);
+        s = String.format("%s %s (%s %s)", mx1, my1, x1, y1);
+        g2.drawString(s, x1, y1);
     }
 
     private Point2D.Float evaluateAndGetPoint(JsonElement el) throws ScriptException {
@@ -308,56 +308,6 @@ class MyPNGExporter extends PNGExporter {
             float y = ((Number)engine.eval(exprY)).floatValue();
 
             return new Point2D.Float(x,y);
-    }
-    
-
-    private void drawPointByDrawingCoords(Graphics srcGraphics, int x, int y) {
-        srcGraphics.fillOval(x, y, 5, 5);
-        String str = String.format("%s %s",x,y);
-        srcGraphics.drawString(str, x, y);
-    }
-    private void drawPointInModelCoords(Graphics srcGraphics, G2DTarget target, float modelX, float modelY) {
-        // Convert model coordinates to view coordinates
-        Point2D viewPoint = convertCoordModelToView(target,modelX,modelY);
-        
-        int x = (int) viewPoint.getX();
-        int y = (int) viewPoint.getY();
-        
-        // Draw the point (now in view coordinates)
-        srcGraphics.fillOval(x - 2, y - 2, 5, 5);  // Center the oval on the point
-        
-        // Draw coordinates label
-        String str = String.format("model=%.1f, %.1f\nview=%s %s", modelX, modelY,x,y);
-        srcGraphics.drawString(str, x, y);  // Offset the text slightly
-    }
-    private Point2D convertCoordModelToView(G2DTarget target, float x, float y) {
-        Point2D modelPoint = new Point2D.Float(x, -y);
-        return target.getGraphics().getTransform().transform(modelPoint, null);
-    }
-    /**
-     * Centers the view on a specific model coordinate (e.g., node position).
-     * @param target The G2DTarget to adjust.
-     * @param modelX Model X-coordinate to center on.
-     * @param modelY Model Y-coordinate to center on.
-     */
-    private void centerOnModelCoord(G2DTarget target, float modelX, float modelY) {
-        float scaling = target.getScaling();
-        System.out.printf("Centering on (%.1f, %.1f) with scaling=%.2f%n", 
-                        modelX, modelY, scaling);
-
-        // Correct for any scaling
-        float translateX = -(modelX * scaling + (widthImg/2) * (1 - scaling) - widthImg/2) / scaling;
-        float translateY = -(-modelY * scaling + (heightImg/2) * (1 - scaling) - heightImg/2) / scaling;
-        
-        target.getTranslate().set(translateX, translateY);
-    }
-    
-    private Point2D.Float scaleAndTranslateToDrawingCoord(Point2D.Float point) {
-        float scaling = target.getScaling();
-        Vector transl = target.getTranslate();
-        var x = (point.getX()  + transl.x)* scaling +widthImg/2*(1-scaling);
-        var y = (-point.getY() + transl.y)* scaling +heightImg/2*(1-scaling);
-        return new Point2D.Float((float)x, (float)y);
     }
 
     public int getHeight() {

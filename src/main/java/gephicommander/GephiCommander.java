@@ -18,6 +18,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -31,6 +32,9 @@ import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import javax.imageio.ImageIO;
+import javax.script.ScriptEngine;
+import javax.script.ScriptEngineManager;
+import javax.script.ScriptException;
 import javax.swing.JFrame;
 import javax.swing.Timer;
 
@@ -111,11 +115,12 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 
 public class GephiCommander {
-    static int layoutIterationsTotal = 0;
-    static Integer currentIteration = null;
-    static Map<Integer, JsonArray> iterToOperation = new HashMap<>();
+    static ScriptEngine engine = new ScriptEngineManager().getEngineByName("JavaScript");
     
-    public static void main(String[] args) {
+    // static Map<Integer, JsonArray> iterToOperation = new HashMap<>();
+    private static JsonArray delayedOperations = new JsonArray();
+    
+    public static void main(String[] args) throws ScriptException {
         JsonArray optionsGlobal = null;
         try (Reader reader = args[args.length-1].equals("-") ?
                 new InputStreamReader(System.in) :
@@ -126,8 +131,8 @@ public class GephiCommander {
             e.printStackTrace();
             System.exit(1);
         }
-        layoutIterationsTotal = countLayoutIterationsTotal(optionsGlobal);
-        System.out.println("IterationsTotal: "+layoutIterationsTotal);
+        LayoutStatus.globalIterationsMax = countLayoutIterationsTotal(optionsGlobal);
+        System.out.println("IterationsTotal: "+LayoutStatus.globalIterationsDone);
 
         Locale.setDefault(Locale.ENGLISH);  // Ignore Gephi localization
 
@@ -146,17 +151,31 @@ public class GephiCommander {
                 obj -> obj.get("iteration").getAsInt(),
                 new JsonArray()
             )); */
-        
+        /* ScriptEngine engine = new ScriptEngineManager().getEngineByName("JavaScript");
+        engine.put("stepsTotal", layoutIterationsTotal);
+
         for (JsonElement element : optionsGlobal) {
             if (element.isJsonObject()) {
                 JsonObject obj = element.getAsJsonObject();
                 if (obj.has("iteration")) {
-                    int iteration = obj.get("iteration").getAsInt();
+                    String iterExpr = obj.get("iteration").getAsString();
+                    int iteration = ((Number)engine.eval(iterExpr)).intValue();
                     iterToOperation.computeIfAbsent(iteration, k -> new JsonArray()).add(obj);
                     optionsGlobal.remove(obj);
                 }
             }
+        } */
+        for (int i = 0; i < optionsGlobal.size(); i++) {
+            var element = optionsGlobal.get(i);
+            JsonObject obj = element.getAsJsonObject();
+            if (obj.has("condition")) {
+                delayedOperations.add(obj);
+                optionsGlobal.remove(obj);
+            }
         }
+        
+        // System.out.println("delayedOperations:");
+        // System.out.println(delayedOperations.toString());
         
         // for (var op : optionsGlobal) {
         //     if (op.getAsJsonObject().has("iteration"))
@@ -170,6 +189,7 @@ public class GephiCommander {
     private static void processOperations(JsonArray operations) {
         for (var opEl : operations) {
             var op = opEl.getAsJsonObject();
+            System.out.println(">>>"+op.toString());
             var opName = op.get("op").getAsString();
             switch (opName) {
                 case "import":
@@ -507,6 +527,46 @@ public class GephiCommander {
             sb.append(s);
         }
         return sb.toString();
+    }
+
+    static void measureGraphBounds() {
+        float[] leftToRightPercentiles = new float[101];
+        float[] bottomToTopPercentiles = new float[101];
+
+        // Collect all node positions
+        var graph = Lookup.getDefault().lookup(GraphController.class).getGraphModel().getGraphVisible();
+        
+        float[] xPositions = new float[graph.getNodeCount()];
+        Float[] yPositions = new Float[graph.getNodeCount()];
+        Float[] yPositionsG2d = new Float[graph.getNodeCount()];
+        var nodes = graph.getNodes();
+        int i = 0;
+        for (var node : nodes) {
+            
+            float x = node.x();
+            float y = node.y();
+            xPositions[i] = x;
+            yPositions[i] = y;
+            yPositionsG2d[i] = -y; // drawing y coord = negative model y
+            i++;
+        }
+        
+        // Calculate percentiles
+        Arrays.sort(xPositions);
+        Arrays.sort(yPositions);//, Comparator.reverseOrder());
+        Arrays.sort(yPositionsG2d, Comparator.reverseOrder());
+        
+        for (int p = 0; p <= 100; p++) {
+            int index = (int) Math.round((p / 100.0) * (xPositions.length - 1));
+            leftToRightPercentiles[p] = xPositions[index];
+            // bottomToTopPercentiles[p] = yPositionsG2d[index];
+            bottomToTopPercentiles[p] = yPositions[index];
+        }
+
+        engine.put("xPercentiles", leftToRightPercentiles);
+        engine.put("yPercentiles", bottomToTopPercentiles);
+        // var obj = new JsonObject();
+        // obj.a
     }
 
     /*
@@ -1343,15 +1403,16 @@ public class GephiCommander {
                 modelProps.putValue(PreviewProperty.NODE_LABEL_OUTLINE_SIZE, 4.0f);
                 modelProps.putValue(PreviewProperty.NODE_LABEL_OUTLINE_OPACITY, 40);
                 modelProps.putValue(PreviewProperty.NODE_LABEL_OUTLINE_COLOR, new DependantColor(Color.BLACK));
-                options.remove("usePreset");
+                
         }
 
-        options.remove("op");
+        var notPreviewProperties = List.of("op","condition","usePreset");
+        
         for (var entry : options.entrySet()) {
             String key = entry.getKey();
             String dotKey = convertCamelToDot(key);
 
-            if (key.equals("iteration")) continue;
+            if (notPreviewProperties.contains(key)) continue;
             
             setPreviewProperty(model, dotKey, entry.getValue());
         }
@@ -1467,7 +1528,7 @@ public class GephiCommander {
             } else if (extension.equals("png")) {
                 
 
-
+                
                 PNGExporter pngExporter = null;
                 if (options.has("PNGExporter")) {
                     var pngOpts = options.get("PNGExporter").getAsJsonObject();
@@ -1502,40 +1563,56 @@ public class GephiCommander {
         JsonObject exportOptions = layoutOptions.has("export") ? 
             layoutOptions.get("export").getAsJsonObject() : null;
         
-        int currentAlgoSteps = layoutOptions.get("steps").getAsInt();
+        LayoutStatus.localIterationsMax = layoutOptions.get("steps").getAsInt();
 
-        Integer currentAlgoEach = layoutOptions.has("exportEach") ?
+        LayoutStatus.localExportEach = layoutOptions.has("exportEach") ?
             layoutOptions.get("exportEach").getAsInt() : null;
         
-        JsonObject pngOptions = null;
-        if (layoutOptions.has("export") && 
-            layoutOptions.get("export").getAsJsonObject().has("PNGExporter")) {
-                pngOptions = layoutOptions.get("export").getAsJsonObject().get("PNGExporter").getAsJsonObject();
-        }
         
-        
-        System.out.printf("Applying layout %s with %s steps...%n", layoutName, currentAlgoSteps);
+        System.out.printf("Applying layout %s with %s steps...%n", layoutName, LayoutStatus.localIterationsMax);
         layout.initAlgo();
-        for (currentIteration = 0; currentIteration < currentAlgoSteps; currentIteration++) {
-            layout.goAlgo();
 
-            JsonArray opsToDo = iterToOperation.get(currentIteration);
+        
+        engine.put("iGlobalMax", LayoutStatus.globalIterationsMax);
+
+        for (LayoutStatus.localIteration = 0; LayoutStatus.localIteration < LayoutStatus.localIterationsMax; LayoutStatus.localIteration++) {
+            layout.goAlgo();
+            engine.put("i", LayoutStatus.localIteration);
+            engine.put("iGlobal", LayoutStatus.globalIterationsDone++);
+
+            JsonArray opsToDo = new JsonArray();
+            for (int i = 0; i < delayedOperations.size(); i++) {
+                var op = delayedOperations.get(i);
+                var obj = op.getAsJsonObject();
+                String iterExpr = obj.get("condition").getAsString();
+                
+                try {
+                    // int iteration = ((Number)engine.eval(iterExpr)).intValue();
+                    boolean should = (Boolean)engine.eval(iterExpr);
+                    if (should) {
+                        opsToDo.add(obj);
+                        delayedOperations.remove(obj);
+                        System.out.printf("For i=%s expr=%s IS %s %n",LayoutStatus.localIteration,iterExpr,should);
+                    }
+                } catch (ScriptException e) { throw new IllegalStateException(e);}
+            }
+            
+            // JsonArray opsToDo = iterToOperation.get(currentIteration);
             if (opsToDo != null && opsToDo.size() != 0) {
+                System.out.println(">>>"+opsToDo.toString());
                 processOperations(opsToDo);
             }
 
-            if (pngOptions != null) {
-                pngOptions.add("_currentLayoutIter", new JsonPrimitive(currentIteration));
-                pngOptions.add("_currentLayoutEach", new JsonPrimitive(currentAlgoEach));
-                pngOptions.add("_currentLayoutTotal", new JsonPrimitive(currentAlgoSteps));
-            }
-
-            if (currentAlgoEach != null &&
-                currentIteration % currentAlgoEach == 0) {
+            if (LayoutStatus.localExportEach != null &&
+                LayoutStatus.localIteration % LayoutStatus.localExportEach == 0) {
+                measureGraphBounds();
                 export(exportOptions);
             }
         }
-        currentIteration = null;
+        LayoutStatus.localIteration = null;
+        LayoutStatus.localExportEach = null;
+        LayoutStatus.localIterationsMax = null;
+
         layout.endAlgo();
         System.out.println("Applying "+ layoutName + " is finished.");
     }
@@ -1545,7 +1622,6 @@ public class GephiCommander {
             Color color = ImportUtils.parseColor(colorValue);
             if (color != null) return color;
             
-            // Fallback to RGB parsing (e.g., "255 0 0" or "rgb(255,0,0)")
             String[] rgb = colorValue.replaceAll("\\D+", " ").trim().split("\\s+");
             
             return new Color(
@@ -1555,5 +1631,13 @@ public class GephiCommander {
             );
         } catch (Exception ignored) {}
         return null;
+    }
+
+    public static class LayoutStatus {
+        static int globalIterationsDone = 0; // across all layouts
+        static int globalIterationsMax = 0;
+        static Integer localIteration = null; // in current layout
+        static Integer localIterationsMax = null;
+        static Integer localExportEach = null;
     }
 }
