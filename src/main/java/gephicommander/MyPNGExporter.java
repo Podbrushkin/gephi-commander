@@ -264,6 +264,22 @@ class MyPNGExporter extends PNGExporter {
                 drawLineModel(imgGraphics, 0,0, (int)-target.getTranslate().x, (int)target.getTranslate().y);
 
             }
+
+            if (options.has("drawPartition") &&
+                !options.get("drawPartition").isJsonNull()
+                ) {
+                
+                int fontSize = options.has("drawPartitionFontSize") ? options.get("drawPartitionFontSize").getAsInt() : heightImg/20;
+                int x = 0;
+                int y = 0;
+                if (options.has("drawPartitionCoord")) {
+                    var coord = options.get("drawPartitionCoord").getAsJsonArray();
+                    x = coord.get(0).getAsInt();
+                    y = coord.get(1).getAsInt();
+                }
+                
+                PartitionRenderer.draw(imgGraphics, GephiCommander.partition, null, fontSize, new Point2D.Float(x, y));
+            }
             
             BufferedImage img = new BufferedImage(widthImg, heightImg, BufferedImage.TYPE_INT_ARGB);
             img.getGraphics().drawImage(sourceImg, 0, 0, null);

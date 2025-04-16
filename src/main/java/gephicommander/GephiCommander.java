@@ -132,55 +132,19 @@ public class GephiCommander {
             System.exit(1);
         }
         LayoutStatus.globalIterationsMax = countLayoutIterationsTotal(optionsGlobal);
-        System.out.println("IterationsTotal: "+LayoutStatus.globalIterationsDone);
+        System.out.println("IterationsTotal: "+LayoutStatus.globalIterationsMax);
 
         Locale.setDefault(Locale.ENGLISH);  // Ignore Gephi localization
-
-        // Map<Integer,List<JsonObject>> iterToOperation = new HashMap<>();
-        /* for (var op : optionsGlobal) {
-            var obj = op.getAsJsonObject();
-            if (obj.has("iteration")) {
-                int iter = obj.get("iteration").getAsInt();
-                var list = iterToOperation.getOrDefault(iter, List.of());
-            }
-        } */
-        /* iterToOperation = StreamSupport.stream(optionsGlobal.spliterator(),false)
-            .map(JsonElement::getAsJsonObject)
-            .filter(obj -> obj.has("iteration"))
-            .collect(Collectors.groupingBy(
-                obj -> obj.get("iteration").getAsInt(),
-                new JsonArray()
-            )); */
-        /* ScriptEngine engine = new ScriptEngineManager().getEngineByName("JavaScript");
-        engine.put("stepsTotal", layoutIterationsTotal);
-
-        for (JsonElement element : optionsGlobal) {
-            if (element.isJsonObject()) {
-                JsonObject obj = element.getAsJsonObject();
-                if (obj.has("iteration")) {
-                    String iterExpr = obj.get("iteration").getAsString();
-                    int iteration = ((Number)engine.eval(iterExpr)).intValue();
-                    iterToOperation.computeIfAbsent(iteration, k -> new JsonArray()).add(obj);
-                    optionsGlobal.remove(obj);
-                }
-            }
-        } */
+        
         for (int i = 0; i < optionsGlobal.size(); i++) {
-            var element = optionsGlobal.get(i);
-            JsonObject obj = element.getAsJsonObject();
+            var obj = optionsGlobal.get(i).getAsJsonObject();
             if (obj.has("condition")) {
                 delayedOperations.add(obj);
-                optionsGlobal.remove(obj);
             }
         }
-        
-        // System.out.println("delayedOperations:");
-        // System.out.println(delayedOperations.toString());
-        
-        // for (var op : optionsGlobal) {
-        //     if (op.getAsJsonObject().has("iteration"))
-        //         optionsGlobal.remove(op);
-        // }
+        for (var op : delayedOperations) {
+            optionsGlobal.remove(op);
+        }
         
 
         processOperations(optionsGlobal);
@@ -201,6 +165,9 @@ public class GephiCommander {
                     break;
                 case "filters":
                     applyFilters(op.get("values").getAsJsonArray());
+                    break;
+                case "resetFilters":
+                    disableFilters();
                     break;
                 case "livePreview":
                     showLivePreview(op);
@@ -411,10 +378,9 @@ public class GephiCommander {
                 case "AttributeEquals":
                     queriesReversedOrder.add(getAttributeEqualsFilter(filterOptions));
                     break;
-                    
                 default:
-                    System.out.printf("Filter \"%s\" not found!%n", name);
-                    break;
+                    String msg = String.format("Filter \"%s\" not found!%n", name);
+                    throw new IllegalArgumentException(msg);
             }
         }
         var filterController = Lookup.getDefault().lookup(FilterController.class);
@@ -435,10 +401,24 @@ public class GephiCommander {
         var view = filterController.filter(queriesReversedOrder.get(0));
         var gm = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
         gm.setVisibleView(view);
-        System.out.println("COUNTS after filtering!!!");
+        System.out.println("COUNTS after filtering:");
         printCounts(gm.getGraphVisible());
         
+    }
+
+    private static void disableFilters() {
+        ProjectController pc = Lookup.getDefault().lookup(ProjectController.class);
+        // Workspace workspace = pc.getCurrentWorkspace();
+    
+        // FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
+        GraphController graphController = Lookup.getDefault().lookup(GraphController.class);
+        GraphModel gm = graphController.getGraphModel();
         
+        // Reset to the default unfiltered view
+        gm.setVisibleView(gm.getGraph().getView());
+    
+        System.out.println("All filters have been disabled");
+        // printCounts(gm.getGraph()); // Optional: Verify counts match full graph
     }
     private static void applyLayouts(JsonArray layouts) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
@@ -1161,85 +1141,7 @@ public class GephiCommander {
         }
         return column;
     }
-    private static void colorNodesByColumn(JsonObject options) {
-        var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
-        AppearanceController appearanceController = Lookup.getDefault().lookup(AppearanceController.class);
-        AppearanceModel appearanceModel = appearanceController.getModel();
-        DirectedGraph graph = graphModel.getDirectedGraph();
-
-        Column column = getNodeColumnIncludingDefault(graphModel, options.get("column").getAsString());
-        
-        String mode = options.get("mode").getAsString().toLowerCase();
-
-        switch (mode) {
-            case "ranking" : {
-                var spliter = options.get("colors").getAsJsonArray().spliterator();
-                List<Color> colors = StreamSupport.stream(spliter,false)
-                    .map(JsonElement::getAsString)
-                    .map(GephiCommander::parseColor)
-                    .collect(Collectors.toList());
-                
-                List<Float> colorPositions = new ArrayList<Float>();
-                if (options.has("colorPositions")) {
-                    var spliterPos = options.get("colorPositions").getAsJsonArray().spliterator();
-                    colorPositions = StreamSupport.stream(spliterPos,false)
-                        .map(JsonElement::getAsFloat)
-                        .collect(Collectors.toList());
-                }
-                if ((colorPositions.size() != 0) && 
-                    (colors.size() != colorPositions.size())
-                    ) {
-                    var msg = "colorPositions.count should be either same as colors.count or 0";
-                    throw new IllegalArgumentException(msg);
-                }
-                if (colorPositions.size() == 0) {
-                    for (int i = 0; i < colors.size(); i++) {
-                        colorPositions.add(1.0f/(colors.size()-1)*i);
-                    }
-                }
-                System.out.println("colorPositions="+colorPositions);
-                float[] colorPositionsPrim = new float[colorPositions.size()];
-                int i = 0;
-                for (Float x : colorPositions) {
-                    colorPositionsPrim[i++] = x;
-                }
-
-                Function transformingFunction = appearanceModel.getNodeFunction(column, RankingElementColorTransformer.class);
-                RankingElementColorTransformer transformer = transformingFunction.getTransformer();
-                transformer.setColors(colors.toArray(new Color[0]));
-                transformer.setColorPositions(colorPositionsPrim);
-
-                appearanceController.transform(transformingFunction);
-                break;
-            } 
-            case "partition" : {
-                Function transformingFunction = appearanceModel.getNodeFunction(column, PartitionElementColorTransformer.class);
-                Partition partition = ((PartitionFunction) transformingFunction).getPartition();
-                Palette palette = PaletteManager.getInstance().generatePalette(partition.size(graph));
-                partition.setColors(graph, palette.getColors());
-
-                appearanceController.transform(transformingFunction);
-                break;
-            } 
-            case "value" : {
-                for (Node node : graphModel.getDirectedGraph().getNodes()) {
-                    try {
-                        String colorValue = node.getAttribute(column).toString();
-                        Color color = GephiCommander.parseColor(colorValue);
-                        if (color != null) {
-                            node.setColor(color);
-                        }
-                    } catch (Exception e) {}
-                }
-                break;
-            }
-            default : {
-                String msg = "Bad color mode. Expected: ranking|partition|value. Got: "+mode;
-                throw new IllegalArgumentException(msg);
-            }
-        }
-    }
-
+    
     private static void labelElementsByColumn(Class<? extends Element> elementType, JsonObject options) {
         // Get the column name from options
         var el = options.get("column");
@@ -1275,6 +1177,7 @@ public class GephiCommander {
             }
         }
     }
+    static Partition partition = null;
     private static void colorElementsByColumn(Class<? extends Element> elementType, JsonObject options) {
         if (!elementType.equals(Node.class) && !elementType.equals(Edge.class))
             throw new IllegalArgumentException("Was expecting Node.class or Edge.class but got "+elementType);
@@ -1353,7 +1256,7 @@ public class GephiCommander {
                     appearanceModel.getNodeFunction(column, PartitionElementColorTransformer.class) :
                     appearanceModel.getEdgeFunction(column, PartitionElementColorTransformer.class);
                 
-                Partition partition = ((PartitionFunction) transformingFunction).getPartition();
+                partition = ((PartitionFunction) transformingFunction).getPartition();
                 Palette palette = PaletteManager.getInstance().generatePalette(partition.size(graph));
                 partition.setColors(graph, palette.getColors());
 
@@ -1598,14 +1501,16 @@ public class GephiCommander {
             }
             
             // JsonArray opsToDo = iterToOperation.get(currentIteration);
-            if (opsToDo != null && opsToDo.size() != 0) {
-                System.out.println(">>>"+opsToDo.toString());
+            if (opsToDo.size() != 0) {
+                System.out.printf(">>At iGlobal=%s these ops are performed: %s%n",
+                    LayoutStatus.globalIterationsDone,opsToDo.toString());
                 processOperations(opsToDo);
             }
 
-            if (LayoutStatus.localExportEach != null &&
+            if (LayoutStatus.localExportEach != null && 
+                LayoutStatus.localExportEach != 0 &&
                 LayoutStatus.localIteration % LayoutStatus.localExportEach == 0) {
-                measureGraphBounds();
+                // measureGraphBounds();
                 export(exportOptions);
             }
         }
