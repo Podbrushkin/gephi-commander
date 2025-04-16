@@ -11,7 +11,6 @@ import javax.imageio.ImageIO;
 import javax.script.ScriptEngine;
 import javax.script.ScriptException;
 
-import org.gephi.graph.api.Node;
 import org.gephi.io.exporter.preview.PNGExporter;
 import org.gephi.preview.api.G2DTarget;
 import org.gephi.preview.api.PreviewController;
@@ -46,22 +45,12 @@ class MyPNGExporter extends PNGExporter {
     private Color oldColor;
     
     private static JsonObject previousInfo;
-    private Node node;
 
     public MyPNGExporter(){}
     public MyPNGExporter(JsonObject options) {
         super();
         this.options = options;
-        if (options.has("findNode")) {
-            var jsonPrim = options.get("findNode").getAsJsonPrimitive();
-            if (jsonPrim.isString()) {
-                node = GephiCommander.getNodeById(jsonPrim.getAsString());
-            } else {
-                node = GephiCommander.getNodeById(jsonPrim.getAsNumber());
-            }
-            System.out.printf("found node: %s %s %s %s %n",
-                node.getId(),node.getLabel(),node.x(),node.y());
-        }
+        
         if (options.has("transparentBg") && 
             options.get("transparentBg").getAsBoolean()) {
             this.setTransparentBackground(true);
@@ -164,13 +153,6 @@ class MyPNGExporter extends PNGExporter {
             }
             
             engine.put("sc", scaling);
-
-            if (node != null) {
-                var point = new Point2D.Float(node.x(),node.y());
-                
-                engine.put("nodeX",point.x);
-                engine.put("nodeY",point.y);
-            }
 
             if (options.has("centerOn") && options.has("translate")) 
                 throw new IllegalArgumentException("PNGExporter.centerOn and translate cannot be used together.");
@@ -277,7 +259,7 @@ class MyPNGExporter extends PNGExporter {
                 !options.get("drawPartition").isJsonNull()
                 ) {
                 
-                int fontSize = options.has("drawPartitionFontSize") ? options.get("drawPartitionFontSize").getAsInt() : heightImg/20;
+                int fontSize = options.has("drawPartitionFontSize") ? options.get("drawPartitionFontSize").getAsInt() : heightImg/40;
                 int x = 0;
                 int y = 0;
                 if (options.has("drawPartitionCoord")) {

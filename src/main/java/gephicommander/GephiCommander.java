@@ -407,10 +407,6 @@ public class GephiCommander {
     }
 
     private static void disableFilters() {
-        ProjectController pc = Lookup.getDefault().lookup(ProjectController.class);
-        // Workspace workspace = pc.getCurrentWorkspace();
-    
-        // FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
         GraphController graphController = Lookup.getDefault().lookup(GraphController.class);
         GraphModel gm = graphController.getGraphModel();
         
@@ -418,7 +414,6 @@ public class GephiCommander {
         gm.setVisibleView(gm.getGraph().getView());
     
         System.out.println("All filters have been disabled");
-        // printCounts(gm.getGraph()); // Optional: Verify counts match full graph
     }
     private static void applyLayouts(JsonArray layouts) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
@@ -659,16 +654,9 @@ public class GephiCommander {
         nodes.sort(fromBottomComp);
         Float fromBottomReachedAt = nodes.get(thresholdCountNodes-1).y();
 
-
-        var threshRect = new Rectangle2D.Float(
-            fromLeftReachedAt,
-            fromTopReachedAt,
-            fromRightReachedAt-fromLeftReachedAt,
-            fromBottomReachedAt-fromTopReachedAt);
-        // System.out.println(" "+getRelCoords(graphBounds, threshRect)); ;
         var threshJson = new JsonObject();
         threshJson.addProperty("threshold", thresholdCountNodes);
-        // threshJson.add("relative", getRelativeCoords(graphBounds, threshRect, true));
+        
         
         threshJson.addProperty("fromLeft", fromLeftReachedAt);
         threshJson.addProperty("fromRight", fromRightReachedAt);
@@ -732,33 +720,6 @@ public class GephiCommander {
         root.add("drawingHints", drawingHints);
         return root;
         // System.out.println(new Gson().toJson(root));
-    }
-
-    private static JsonObject getRelativeCoords(Rectangle2D outerRect, Rectangle2D innerRect, boolean mirrorVertically) {
-        // Example outer rectangle
-        // Rectangle2D.Float outerRect = new Rectangle2D.Float(100, 100, 300, 200);
-        // Example inner rectangle
-        // Rectangle2D.Float innerRect = new Rectangle2D.Float(150, 150, 100, 50);
-    
-        // Calculate the relative coordinates
-        double topRel = (innerRect.getY() - outerRect.getY()) / outerRect.getHeight();
-        double leftRel = (innerRect.getX() - outerRect.getX()) / outerRect.getWidth();
-        double rightRel = (outerRect.getX() + outerRect.getWidth() - (innerRect.getX() + innerRect.getWidth())) / outerRect.getWidth();
-        double bottomRel = (outerRect.getY() + outerRect.getHeight() - (innerRect.getY() + innerRect.getHeight())) / outerRect.getHeight();
-    
-        // Print the results
-        var result = new JsonObject();
- 
-        result.addProperty("leftRel", leftRel);
-        result.addProperty("rightRel", rightRel);
-        if (!mirrorVertically) {
-            result.addProperty("topRel", topRel);
-            result.addProperty("bottomRel", bottomRel);
-        } else {
-            result.addProperty("topRel", bottomRel);
-            result.addProperty("bottomRel", topRel);
-        }
-        return result;
     }
 
     private static Query getFilterGiantComponent() {
@@ -1476,7 +1437,11 @@ public class GephiCommander {
         layout.initAlgo();
 
         
+        var graph = Lookup.getDefault().lookup(GraphController.class).getGraphModel().getGraphVisible();
         engine.put("iGlobalMax", LayoutStatus.globalIterationsMax);
+        engine.put("graph", graph); // this is used for getNode(id).x()
+        
+        
 
         for (LayoutStatus.localIteration = 0; LayoutStatus.localIteration < LayoutStatus.localIterationsMax; LayoutStatus.localIteration++) {
             layout.goAlgo();

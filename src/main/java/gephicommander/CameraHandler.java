@@ -134,7 +134,7 @@ public class CameraHandler {
             
             end = ((Number)engine.eval(arr[lowerIndex+1])).floatValue();
         } catch (ScriptException e) {
-            String msg = String.format("Failed to evaluate %s and %s in ScriptEngine", arr[lowerIndex],arr[lowerIndex+1]);
+            String msg = String.format("Failed to evaluate %s in ScriptEngine", arr[lowerIndex]);
             throw new RuntimeException(msg,e);
         }
         
