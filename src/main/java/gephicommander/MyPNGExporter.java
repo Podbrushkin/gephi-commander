@@ -110,9 +110,9 @@ class MyPNGExporter extends PNGExporter {
             // user can access last used scaling and translate
             // String prevExpr = "let prev";
             if (previousInfo != null) {
-                String json = previousInfo.toString();
-                engine.eval("prev = "+json);
-                // prevExpr += " = "+json;
+                // String json = previousInfo.toString();
+                // engine.eval("prev = "+json);
+                engine.put("prev", previousInfo);
             }
             // engine.eval(prevExpr+";");
             
@@ -158,6 +158,11 @@ class MyPNGExporter extends PNGExporter {
                 scaling = ((Number)engine.eval(scalingExpr)).floatValue();
                 target.setScaling(scaling);
             }
+            else if (CameraHandler.hasScaling()) {
+                scaling = CameraHandler.getScalingForIteration(GephiCommander.LayoutStatus.globalIterationsDone);
+                target.setScaling(scaling);
+            }
+            
             engine.put("sc", scaling);
 
             if (node != null) {
@@ -166,6 +171,10 @@ class MyPNGExporter extends PNGExporter {
                 engine.put("nodeX",point.x);
                 engine.put("nodeY",point.y);
             }
+
+            if (options.has("centerOn") && options.has("translate")) 
+                throw new IllegalArgumentException("PNGExporter.centerOn and translate cannot be used together.");
+
             if (options.has("centerOn")) {
                 var el = options.get("centerOn");
                 if (!el.isJsonArray() || el.getAsJsonArray().size() != 2)
@@ -181,7 +190,7 @@ class MyPNGExporter extends PNGExporter {
                 var st = CoordUtils.getToCenterOn(widthImg, heightImg, target.getScaling(), new Point2D.Float(x, y));
                 target.getTranslate().set(st.translateX, st.translateY);
             }
-            if (options.has("centerOnStart") && options.has("centerOnEnd")) {
+            else if (options.has("centerOnStart") && options.has("centerOnEnd")) {
                 var elStart = options.get("centerOnStart");
                 var elEnd = options.get("centerOnEnd");
                 if (!elStart.isJsonArray() || elStart.getAsJsonArray().size() != 2 ||
@@ -198,13 +207,7 @@ class MyPNGExporter extends PNGExporter {
                 var st = CoordUtils.getToCenterOn(widthImg, heightImg, target.getScaling(), new Point2D.Float(currentX, currentY));
                 target.getTranslate().set(st.translateX, st.translateY);
                 
-            }
-
-            if (options.has("centerOn") && options.has("translate")) 
-                throw new IllegalArgumentException("PNGExporter.centerOn and translate cannot be used together.");
-            
-            
-            if (options.has("translate")) {
+            } else if (options.has("translate")) {
                 var el = options.get("translate");
                 if (!el.isJsonArray() || el.getAsJsonArray().size() != 2)
                     throw new IllegalArgumentException("PNGExporter.translate should be an array of 2 elements - x and y.");
@@ -216,6 +219,11 @@ class MyPNGExporter extends PNGExporter {
                 Float yTranslate = ((Number)engine.eval(yExpression)).floatValue();
 
                 target.getTranslate().set(xTranslate, yTranslate);
+
+            } else if (CameraHandler.hasCenterOn()) {
+                var centerPoint = CameraHandler.getCenterForIteration(GephiCommander.LayoutStatus.globalIterationsDone);
+                var st = CoordUtils.getToCenterOn(widthImg, heightImg, target.getScaling(), centerPoint);
+                target.getTranslate().set(st.translateX, st.translateY);
             }
             // engine.put("bounds", GephiStarter.getGraphBounds(0.01f).toString());
             

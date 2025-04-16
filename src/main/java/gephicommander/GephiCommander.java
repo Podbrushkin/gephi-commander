@@ -21,11 +21,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -112,7 +110,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.google.gson.JsonPrimitive;
 
 public class GephiCommander {
     static ScriptEngine engine = new ScriptEngineManager().getEngineByName("JavaScript");
@@ -166,8 +163,11 @@ public class GephiCommander {
                 case "filters":
                     applyFilters(op.get("values").getAsJsonArray());
                     break;
-                case "resetFilters":
+                case "disableFilters":
                     disableFilters();
+                    break;
+                case "setCamera":
+                    CameraHandler.apply(op);
                     break;
                 case "livePreview":
                     showLivePreview(op);
