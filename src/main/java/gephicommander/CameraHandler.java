@@ -6,6 +6,7 @@ import java.util.stream.Collectors;
 import javax.script.ScriptEngine;
 import javax.script.ScriptException;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
@@ -37,7 +38,19 @@ public class CameraHandler {
         }
         
         if (op.has("centerOn")) {
-            centerXExpressions = op.get("centerOn").getAsJsonArray()
+            JsonArray arr = op.get("centerOn").getAsJsonArray();
+            
+            // if single point instead of array of points
+            if (arr.size() == 2 && arr.get(0).isJsonPrimitive()) {
+                var pointArr = new JsonArray(2);
+                pointArr.add(arr.get(0));
+                pointArr.add(arr.get(1));
+                arr = new JsonArray();
+                arr.add(pointArr);
+            }
+
+
+            centerXExpressions = arr.getAsJsonArray()
                 .asList()
                 .stream()
                 .map(JsonElement::getAsJsonArray)
@@ -53,7 +66,7 @@ public class CameraHandler {
                 centerXFloats = null;
             }
 
-            centerYExpressions = op.get("centerOn").getAsJsonArray()
+            centerYExpressions = arr.getAsJsonArray()
                 .asList()
                 .stream()
                 .map(JsonElement::getAsJsonArray)
@@ -127,39 +140,38 @@ public class CameraHandler {
 
         
         
-        float start,end;
+        float startValue,endValue;
         try {
-            start = ((Number)engine.eval(arr[lowerIndex])).floatValue();
-            if (lowerIndex == arr.length - 1) return start;
+            startValue = ((Number)engine.eval(arr[lowerIndex])).floatValue();
+            System.out.printf("i=%s, startValue=%s ", i, startValue);
+            if (lowerIndex == arr.length - 1 || i == 0) return startValue;
             
-            end = ((Number)engine.eval(arr[lowerIndex+1])).floatValue();
+            endValue = ((Number)engine.eval(arr[lowerIndex+1])).floatValue();
+            System.out.printf("endValue=%s %n",endValue);
         } catch (ScriptException e) {
             String msg = String.format("Failed to evaluate %s in ScriptEngine", arr[lowerIndex]);
             throw new RuntimeException(msg,e);
         }
         
-
-        
-
-        return start + fraction * (end - start);
+        return startValue + fraction * (endValue - startValue);
     }
-    public static float interpolate(float[] arr, int i, int iMax) {
-        if (i < 0 || i > iMax || iMax <= 0 || arr == null || arr.length == 0)
+    public static float interpolate(float[] values, int i, int iMax) {
+        if (i < 0 || i > iMax || iMax <= 0 || values == null || values.length == 0)
             throw new IllegalArgumentException("Invalid input parameters");
         
         
         float ratio = (float) i / iMax;
-        float exactPos = ratio * (arr.length - 1);
+        float exactPos = ratio * (values.length - 1);
         int lowerIndex = (int) exactPos;
         float fraction = exactPos - lowerIndex;
     
         // If i == iMax, return the last element to avoid index issues
-        if (lowerIndex == arr.length - 1) {
-            return arr[lowerIndex];
+        if (lowerIndex == values.length - 1) {
+            return values[lowerIndex];
         }
     
         // Linear interpolation between arr[lowerIndex] and arr[lowerIndex + 1]
-        return arr[lowerIndex] + fraction * (arr[lowerIndex + 1] - arr[lowerIndex]);
+        return values[lowerIndex] + fraction * (values[lowerIndex + 1] - values[lowerIndex]);
     }
 
     // private static float interpolate(String start, String end, int i, int iMax) {

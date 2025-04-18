@@ -21,9 +21,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -113,6 +115,8 @@ import com.google.gson.JsonParser;
 
 public class GephiCommander {
     static ScriptEngine engine = new ScriptEngineManager().getEngineByName("JavaScript");
+    static JsonObject globalExport = new JsonObject();
+    private final static String DELAYED_PROP = "delayed";
     
     // static Map<Integer, JsonArray> iterToOperation = new HashMap<>();
     private static JsonArray delayedOperations = new JsonArray();
@@ -135,7 +139,7 @@ public class GephiCommander {
         
         for (int i = 0; i < optionsGlobal.size(); i++) {
             var obj = optionsGlobal.get(i).getAsJsonObject();
-            if (obj.has("condition")) {
+            if (obj.has(DELAYED_PROP)) {
                 delayedOperations.add(obj);
             }
         }
@@ -199,12 +203,17 @@ public class GephiCommander {
                 case "export":
                     export(op);
                     break;
-                default:
-                    System.out.println("Unknown root element "+opName);
+                case "setExport":
+                    globalExport = op;
                     break;
+                default:
+                    String msg = "Unknown root element "+opName;
+                    throw new IllegalArgumentException(msg);
             }
         }
     }
+
+    // private static void setGlobal(JsonObject op) {}
 
     private static int countLayoutIterationsTotal(JsonArray optionsGlobal) {
         return StreamSupport.stream(optionsGlobal.spliterator(), false)
@@ -1100,44 +1109,93 @@ public class GephiCommander {
             case "outDegree" : {column = graphModel.defaultColumns().outDegree(); break;}
             default : {column = graphModel.getNodeTable().getColumn(desiredColumn); break;}
         }
+        if (column == null) {
+            String inf = String.format("Nodes don't have %s column, these exist: %s",getColumnsInfo(Node.class));
+            throw new IllegalArgumentException(inf);
+        }
         return column;
     }
     
     private static void labelElementsByColumn(Class<? extends Element> elementType, JsonObject options) {
-        // Get the column name from options
+        // TODO: pls refactor
         var el = options.get("column");
         String columnName = el.isJsonNull() ? null : el.getAsString();
         
-        // Get current workspace and graph
         ProjectController pc = Lookup.getDefault().lookup(ProjectController.class);
         Workspace workspace = pc.getCurrentWorkspace();
         GraphModel graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel(workspace);
-        Graph graph = graphModel.getGraph();
+
+        ElementIterable<?> iter = elementType.equals(Node.class) ?
+                    graphModel.getDirectedGraph().getNodes() :
+                    graphModel.getDirectedGraph().getEdges();
         
-        // Handle nodes
-        if (elementType == Node.class) {
-            for (Node node : graph.getNodes()) {
-                if (columnName == null) {
-                    node.removeAttribute("Label");
-                    continue;
-                }
-                Object labelValue = node.getAttribute(columnName);
-                if (labelValue != null) {
-                    node.setLabel(labelValue.toString());
-                }
+        
+        for (Element nodeOrEdge : iter) {
+            if (options.has("condition")) {
+                String expr = options.get("condition").getAsString();
+                boolean applyLabel = false;
+
+                var map = getElementAsMap(graphModel, nodeOrEdge);
+                
+                engine.put("el", map);
+
+                try {
+                    applyLabel = (Boolean)engine.eval(expr); 
+                } catch (ScriptException e) {}
+                if (!applyLabel) continue;
             }
-        } 
-        // Handle edges
-        else if (elementType == Edge.class) {
-            for (Edge edge : graph.getEdges()) {
-                // edge.
-                Object labelValue = edge.getAttribute(columnName);
-                if (labelValue != null) {
-                    edge.setLabel(labelValue.toString());
-                }
+            if (columnName == null) {
+                nodeOrEdge.removeAttribute("Label");
+                continue;
             }
+            Column column = nodeOrEdge instanceof Node ? 
+                getNodeColumnIncludingDefault(graphModel, columnName) :
+                graphModel.getEdgeTable().getColumn(columnName);
+            
+            String newLabel = null;
+            if (column != null && column.exists()) {
+                // System.out.printf("column %s exists=%s %n",column,column.exists());
+                newLabel = nodeOrEdge.getAttribute(column).toString();
+            } else {
+                newLabel = getElementAsMap(graphModel, nodeOrEdge).get(columnName).toString();
+            }
+            nodeOrEdge.setLabel(newLabel);
         }
     }
+
+    private static Map<String,Object> getElementAsMap(GraphModel graphModel, Element element) {
+        var keys = element.getAttributeKeys();
+        if (element instanceof Node) {
+            keys.addAll(List.of("degree","inDegree","outDegree"));
+        }
+        var map = new HashMap<String,Object>();
+        for (var key : keys) {
+            switch (key) {
+                case "degree":
+                    var val = String.valueOf(graphModel.getDirectedGraphVisible().getDegree((Node)element));
+                    map.put(key, val);
+                    continue;
+                case "inDegree":
+                    val = String.valueOf(graphModel.getDirectedGraphVisible().getInDegree((Node)element));
+                    map.put(key, val);
+                    continue;
+                case "outDegree":
+                    val = String.valueOf(graphModel.getDirectedGraphVisible().getOutDegree((Node)element));
+                    map.put(key, val);
+                    continue;
+            }
+
+
+            Column column = element instanceof Node ? 
+                getNodeColumnIncludingDefault(graphModel, key) :
+                graphModel.getEdgeTable().getColumn(key);
+            
+            Object val = element.getAttribute(column);
+            map.put(key, val);
+        }
+        return map;
+    }
+
     static Partition partition = null;
     private static void colorElementsByColumn(Class<? extends Element> elementType, JsonObject options) {
         if (!elementType.equals(Node.class) && !elementType.equals(Edge.class))
@@ -1162,12 +1220,13 @@ public class GephiCommander {
             );
             throw new IllegalArgumentException(msg);
         }
-        
+        System.out.printf("colorElementsByColumn: column %s exists=%s %n",column,column.exists());
+
         String mode = options.get("mode").getAsString().toLowerCase();
 
         switch (mode) {
             case "ranking" : {
-                List<Color> colors = List.of(Color.BLUE, Color.YELLOW, Color.RED);
+                List<Color> colors = List.of(GephiCommander.parseColor("DeepSkyBlue"), Color.YELLOW, Color.RED);
                 if (options.has("colors")) {
                     var spliter = options.get("colors").getAsJsonArray().spliterator();
                     colors = StreamSupport.stream(spliter,false)
@@ -1232,6 +1291,7 @@ public class GephiCommander {
                 for (Element el : iter) {
                     try {
                         String colorValue = el.getAttribute(column).toString();
+                        System.out.printf("each> column %s exists=%s %n",column,column.exists());
                         Color color = GephiCommander.parseColor(colorValue);
                         if (color != null) {
                             el.setColor(color);
@@ -1270,7 +1330,7 @@ public class GephiCommander {
                 
         }
 
-        var notPreviewProperties = List.of("op","condition","usePreset");
+        var notPreviewProperties = List.of("op",DELAYED_PROP,"usePreset");
         
         for (var entry : options.entrySet()) {
             String key = entry.getKey();
@@ -1359,6 +1419,10 @@ public class GephiCommander {
     }
     private static void export(JsonObject options) {
         System.out.println("Exporting...");
+        //  replace local options with global
+        // if (globalOptions.has("export"))
+        //     options = globalOptions.get("export").getAsJsonObject();
+        
         ExportController ec = Lookup.getDefault().lookup(ExportController.class);
         var pc = Lookup.getDefault().lookup(ProjectController.class);
         var workspace = pc.getCurrentWorkspace();
@@ -1424,13 +1488,20 @@ public class GephiCommander {
 
     private static void runLayout(Layout layout, JsonObject layoutOptions) {
         String layoutName = layout.getClass().getSimpleName();
+        
+        // Local has more priority than global
         JsonObject exportOptions = layoutOptions.has("export") ? 
-            layoutOptions.get("export").getAsJsonObject() : null;
+            layoutOptions.get("export").getAsJsonObject() : 
+            globalExport;
+        
+        System.out.println("Active export options: "+exportOptions);
         
         LayoutStatus.localIterationsMax = layoutOptions.get("steps").getAsInt();
 
-        LayoutStatus.localExportEach = layoutOptions.has("exportEach") ?
-            layoutOptions.get("exportEach").getAsInt() : null;
+        
+        if (exportOptions != null && exportOptions.has("exportEach")) {
+            LayoutStatus.localExportEach = exportOptions.get("exportEach").getAsInt();
+        }
         
         
         System.out.printf("Applying layout %s with %s steps...%n", layoutName, LayoutStatus.localIterationsMax);
@@ -1447,20 +1518,22 @@ public class GephiCommander {
             layout.goAlgo();
             engine.put("i", LayoutStatus.localIteration);
             engine.put("iGlobal", LayoutStatus.globalIterationsDone++);
+            // engine.put("sc", null);
 
             JsonArray opsToDo = new JsonArray();
             for (int i = 0; i < delayedOperations.size(); i++) {
                 var op = delayedOperations.get(i);
                 var obj = op.getAsJsonObject();
-                String iterExpr = obj.get("condition").getAsString();
+                String conditionalExpr = obj.get(DELAYED_PROP).getAsString();
                 
                 try {
-                    // int iteration = ((Number)engine.eval(iterExpr)).intValue();
-                    boolean should = (Boolean)engine.eval(iterExpr);
-                    if (should) {
+                    float targetProgress = ((Number)engine.eval(conditionalExpr)).floatValue();
+                    float currentProgress = (float)LayoutStatus.globalIterationsDone / LayoutStatus.globalIterationsMax;
+                    if (currentProgress >= targetProgress) {
                         opsToDo.add(obj);
                         delayedOperations.remove(obj);
-                        System.out.printf("For i=%s expr=%s IS %s %n",LayoutStatus.localIteration,iterExpr,should);
+                        System.out.printf("At iGlobal=%s %s >= %s. Applying op=%s %n", 
+                            LayoutStatus.globalIterationsDone, currentProgress, conditionalExpr, obj);
                     }
                 } catch (ScriptException e) { throw new IllegalStateException(e);}
             }
