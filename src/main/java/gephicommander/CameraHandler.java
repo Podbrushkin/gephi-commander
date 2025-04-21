@@ -96,9 +96,11 @@ public class CameraHandler {
     public static Point2D.Float getCenterForIteration(int iteration) {
         int iGlobalMax =  GephiCommander.LayoutStatus.globalIterationsMax;
 
-        centerPositions = new float[centerPositionsExprs.length];
-        for (int i = 0; i < centerPositionsExprs.length; i++) {
-            centerPositions[i] = evaluateExpression(centerPositionsExprs[i]);
+        if (centerPositionsExprs != null) {
+            centerPositions = new float[centerPositionsExprs.length];
+            for (int i = 0; i < centerPositionsExprs.length; i++) {
+                centerPositions[i] = evaluateExpression(centerPositionsExprs[i]);
+            }
         }
 
         float x = centerPositions == null ?
@@ -113,10 +115,12 @@ public class CameraHandler {
     }
     public static float getScalingForIteration(int iteration) {
         int iGlobalMax =  GephiCommander.LayoutStatus.globalIterationsMax;
-
-        scalingPositions = new float[scalingPositionsExprs.length];
-        for (int i = 0; i < scalingPositionsExprs.length; i++) {
-            scalingPositions[i] = evaluateExpression(scalingPositionsExprs[i]);
+        //TODO: fix
+        if (scalingPositions != null) {
+            scalingPositions = new float[scalingPositionsExprs.length];
+            for (int i = 0; i < scalingPositionsExprs.length; i++) {
+                scalingPositions[i] = evaluateExpression(scalingPositionsExprs[i]);
+            }
         }
 
         return scalingPositions == null ?
@@ -134,7 +138,7 @@ public class CameraHandler {
 
     public static float interpolate(String[] values, int i, int iMax, Function<String,Float> mapper) {
         float[] positions = new float[values.length];
-        // if (values.length == 1) po
+        
         for (int j = 0; j < values.length; j++) {
             positions[j] = (float)j/(values.length-1);
         }

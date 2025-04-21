@@ -6,11 +6,9 @@ import java.awt.Image;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.io.OutputStream;
-import java.util.Map;
 
 import javax.imageio.ImageIO;
 import javax.script.ScriptEngine;
-import javax.script.ScriptException;
 
 import org.gephi.io.exporter.preview.PNGExporter;
 import org.gephi.preview.api.G2DTarget;
@@ -25,7 +23,6 @@ import org.gephi.utils.progress.Progress;
 import org.gephi.utils.progress.ProgressTicket;
 import org.openide.util.Lookup;
 
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 class MyPNGExporter extends PNGExporter {
@@ -44,8 +41,6 @@ class MyPNGExporter extends PNGExporter {
     private int margin = 4;
     private G2DTarget target;
     private Color oldColor;
-    
-    private static JsonObject previousInfo;
 
     public MyPNGExporter(){}
     public MyPNGExporter(JsonObject options) {
@@ -79,10 +74,6 @@ class MyPNGExporter extends PNGExporter {
 
         target.refresh();
         
-        
-        // var graph = Lookup.getDefault().lookup(GraphModel.class).getUndirectedGraphVisible();
-
-        // System.out.printf("%s %s%n",node.x(),node.y());
         try {
             // if user wants to use graph size in his expressions
             JsonObject boundsJsonObj = null;
@@ -92,33 +83,7 @@ class MyPNGExporter extends PNGExporter {
                 String json = boundsJsonObj.toString();
                 System.out.printf("Bounds for margin=%s: %s%n",graphMargin,json);
                 engine.eval("bounds = "+json);
-                // engine.eval("print('from js!');print(bounds.yMax);");
             }
-
-            
-
-            // user can access last used scaling and translate
-            // String prevExpr = "let prev";
-            if (previousInfo != null) {
-                // String json = previousInfo.toString();
-                // engine.eval("prev = "+json);
-                engine.put("prev", previousInfo);
-            }
-            // engine.eval(prevExpr+";");
-            
-            
-            // Integer stepsGlobal = GephiCommander.LayoutStatus.globalIterationsMax;
-            Integer steps = GephiCommander.LayoutStatus.localIterationsMax;
-            Integer exportEach = GephiCommander.LayoutStatus.localExportEach;
-            Integer step = GephiCommander.LayoutStatus.localIteration;
-
-
-            
-            // engine.put("i", step);
-            // engine.put("iMax", steps);
-            // engine.put("exportEach", exportEach);
-            // engine.put("iGlobal", GephiCommander.LayoutStatus.globalIterationsDone);
-            // engine.put("iGlobalMax", GephiCommander.LayoutStatus.globalIterationsMax);
             
             engine.put("w", widthImg);
             engine.put("h", heightImg);
@@ -126,24 +91,9 @@ class MyPNGExporter extends PNGExporter {
             
 
             float scaling = target.getScaling();
-            if (options.has("scalingStart") || options.has("scalingEnd")) {
-                String scalingStartExpr = options.has("scalingStart") ? 
-                    options.get("scalingStart").getAsString() : "1";
-                
-                String scalingEndExpr = options.has("scalingEnd") ? 
-                    options.get("scalingEnd").getAsString() : "1";
-                
-                float scalingStart = ((Number)engine.eval(scalingStartExpr)).floatValue();
-                float scalingEnd = ((Number)engine.eval(scalingEndExpr)).floatValue();
-
-                scaling = scalingStart+(step/(float)steps)*(scalingEnd-scalingStart);
-
-                System.out.printf("Scaling(start=%s;end=%s). Current: %s%n",scalingStart,scalingEnd,scaling);
-                target.setScaling(scaling);
-
-                System.out.printf("iteration=%s,exportEach=%s,exportSteps=%s%n",step,exportEach,steps);
-            }
-            else if (options.has("scaling")) {
+            
+            if (options.has("scaling")) {
+                // TODO: wrong, fix
                 String scalingExpr = options.get("scaling").getAsString();
                 scaling = ((Number)engine.eval(scalingExpr)).floatValue();
                 target.setScaling(scaling);
@@ -173,24 +123,7 @@ class MyPNGExporter extends PNGExporter {
                 var st = CoordUtils.getToCenterOn(widthImg, heightImg, target.getScaling(), new Point2D.Float(x, y));
                 target.getTranslate().set(st.translateX, st.translateY);
             }
-            else if (options.has("centerOnStart") && options.has("centerOnEnd")) {
-                var elStart = options.get("centerOnStart");
-                var elEnd = options.get("centerOnEnd");
-                if (!elStart.isJsonArray() || elStart.getAsJsonArray().size() != 2 ||
-                    !elEnd.isJsonArray() || elEnd.getAsJsonArray().size() != 2)
-                    throw new IllegalArgumentException("centerOnStart/End both should be an array of 2 elements - x and y.");
-                
-                Point2D.Float pointStart = evaluateAndGetPoint(elStart);
-                Point2D.Float pointEnd = evaluateAndGetPoint(elEnd);
-
-                // "0 + step / steps * (nodeX - 0)"
-                float currentX = (float)(pointStart.getX() + (float)step / (float)steps * (pointEnd.getX() - pointStart.getX()));
-                float currentY = (float)(pointStart.getY() + (float)step / (float)steps * (pointEnd.getY() - pointStart.getY()));
-
-                var st = CoordUtils.getToCenterOn(widthImg, heightImg, target.getScaling(), new Point2D.Float(currentX, currentY));
-                target.getTranslate().set(st.translateX, st.translateY);
-                
-            } else if (options.has("translate")) {
+            else if (options.has("translate")) {
                 var el = options.get("translate");
                 if (!el.isJsonArray() || el.getAsJsonArray().size() != 2)
                     throw new IllegalArgumentException("PNGExporter.translate should be an array of 2 elements - x and y.");
@@ -221,7 +154,7 @@ class MyPNGExporter extends PNGExporter {
             info.addProperty("translateX", target.getTranslate().getX());
             info.addProperty("translateY", target.getTranslate().getY());
             System.out.println(info);
-            previousInfo = info;
+            
 
             Progress.switchToIndeterminate(progress);
 
@@ -230,10 +163,6 @@ class MyPNGExporter extends PNGExporter {
             Image sourceImg = target.getImage();
             Graphics imgGraphics = sourceImg.getGraphics();
 
-            // this always correct, for any scaling
-            // imgGraphics.setColor(Color.PINK);
-            // drawPointInModelCoords(imgGraphics,target,100,200);
-            
             if (options.has("drawDebug") &&
                 options.get("drawDebug").getAsBoolean() 
                 ) {
@@ -301,21 +230,6 @@ class MyPNGExporter extends PNGExporter {
         g2.drawString(s, x0, y0);
         s = String.format("%s %s (%s %s)", mx1, my1, x1, y1);
         g2.drawString(s, x1, y1);
-    }
-
-    private Point2D.Float evaluateAndGetPoint(JsonElement el) throws ScriptException {
-            if (!el.isJsonArray() || el.getAsJsonArray().size() != 2)
-                throw new IllegalArgumentException("centerOnStart/End both should be an array of 2 elements - x and y.");
-            
-            var point = el.getAsJsonArray();
-            String exprX = point.get(0).getAsString();
-            String exprY = point.get(1).getAsString();
-            
-            
-            float x = ((Number)engine.eval(exprX)).floatValue();
-            float y = ((Number)engine.eval(exprY)).floatValue();
-
-            return new Point2D.Float(x,y);
     }
 
     public int getHeight() {

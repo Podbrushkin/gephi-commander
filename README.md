@@ -367,16 +367,18 @@ You can choose initial and final points of movement.
 ```powershell
 $graphFile = Get-ChildItem -Recurse sampleGraphMini.gml
 $dir = $graphFile.Directory
-$outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
+$frameFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
 @(
   @{op='import'; file=$graphFile.FullName }
   @{op='preview'; 'nodeLabelShow'=$true; nodeLabelColor='Gray'; }
+  @{op='setExport'; file=$frameFile; resolution=@(400,400); timestamp=$true; exportEach=1;
+    PNGExporter=@{ drawDebug=$true; };
+  }
+  @{op='setCamera'; 
+    centerOn=@( @(0,0),@("graph.getNode('1').x()","graph.getNode('1').y()") );
+  }
   @{op='layouts'; values=@(
-    @{name='NoOp'; steps=200; exportEach=10;
-      export=@{op='export';file=$outFile; resolution=@(400,400); timestamp=$true;
-        PNGExporter=@{ centerOnStart=@(0,0); centerOnEnd=@('nodeX','nodeY'); findNode='1'; drawDebug=$true; }
-      }
-    }
+    @{ name='NoOp'; steps=20; }
   )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
@@ -413,64 +415,40 @@ When export is in layout loop, you can specify desired initial and final values 
 ```powershell
 $graphFile = Get-ChildItem -Recurse sampleGraphMini.gml
 $dir = $graphFile.Directory
-$outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
-
+$frameFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
 @(
   @{op='import'; file=$graphFile.FullName }
   @{op='preview'; 'nodeLabelShow'=$true; nodeLabelColor='Gray'; }
+  @{op='setExport'; file=$frameFile; resolution=@(400,400); timestamp=$true; exportEach=1;
+    PNGExporter=@{ drawDebug=$true; };
+  }
+  @{op='setCamera'; centerOn=@(0,0); scaling=@(1,2); }
   @{op='layouts'; values=@(
-    @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.00001; steps=20; exportEach=1;
-      export=@{op='export';file=$outFile; resolution=@(400,400); timestamp=$true;
-        PNGExporter=@{ scalingStart=1; scalingEnd=2; centerOn=@(0,0); drawDebug=$true; }
-      }
-    }
+    @{ name='NoOp'; steps=20; }
   )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
-$outFile = "$dir\output.gif"
+$outFile = "$dir\output$(Get-Date -Format FileDateTime).gif"
 & $magickExe -delay 0 -loop 0 -dispose previous "$dir\frame*.png" $outFile
 gci $dir frame*.png | Remove-Item
 ```
 <img src="https://github.com/user-attachments/assets/0d76b8a6-3328-4700-8faf-3f1e62c58c34" width="240"/>
 
 
-## Create GIF
-```powershell
-$magickExe = 'C:\Program Files\ImageMagick-7.1.0-Q16-HDRI\magick.exe'
-
-$graphFile = Get-ChildItem -Recurse dolphins.gml
-$dir = $graphFile.Directory
-$outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
-@(
-  @{op='import'; file=$graphFile.FullName }
-  @{op='layouts'; values=@(
-  @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.02; Scaling=20; steps=40; exportEach=1;
-   export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true}
-  }
-)}
-) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
-
-$outFile = "$dir\output.gif"
-& $magickExe -delay 0 -loop 0 "$dir\*.png" $outFile
-gci $dir frame*.png | Remove-Item
-```
-![output](https://github.com/user-attachments/assets/3f7601cc-c693-4656-984e-d48b3aaeffb7)
-
 ## Create GIF with transparency
 ```powershell
 $graphFile = get-childitem -recurse football.gml
 $dir = $graphFile.Directory
-$outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
+$frameFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
 @(
   @{op='import'; file=$graphFile.FullName }
+  @{op='setExport'; file=$frameFile; resolution=@(320,240); timestamp=$true; exportEach=1;
+    PNGExporter=@{transparentBg=$true}
+  }
   @{op='statistics';values=@('Modularity') }
   @{op='colorNodesBy';column='modularity_class'; mode='partition'}
   @{op='layouts'; values=@(
-  @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.1; Scaling=20; steps=40; exportEach=1;
-   export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true
-    PNGExporter=@{transparentBg=$true}
-   }
-  }
+  @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.1; Scaling=20; steps=40; }
 )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 
@@ -482,25 +460,25 @@ gci $dir frame*.png | Remove-Item
 
 ## Follow a node
 
-Put a node id into findNode and reference it in centerOnX/Y expressions:
+Reference desired node x/y in centerOn expressions. They will be evaluated each iteration.
 ```powershell
 $graphFile = get-childitem -recurse dolphins.gml
 $dir = $graphFile.Directory
-$outFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
+$frameFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
 
 @(
   @{op='import'; file=$graphFile.FullName }
+  @{op='setExport';file=$frameFile; resolution=@(320,240); timestamp=$true; exportEach=1; }
+  @{op='setCamera'; scaling=0.6;
+    centerOn=@("graph.getNode('2').x()","graph.getNode('2').y()");
+  }
   @{op='preview'; 'background-color'='DimGray'; 'nodeLabelShow'=$true; nodeLabelColor='White' }
   @{op='layouts'; values=@(
-   @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.01; Scaling=20; steps=40; exportEach=1;
-      export=@{op='export';file=$outFile; resolution=@(320,240); timestamp=$true
-       PNGExporter=@{scaling=0.6; centerOn=@('nodeX','nodeY'); findNode="2" }
-      }
-   }
-)}
+    @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.01; Scaling=20; steps=40; }
+  )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
 $outFile = "$dir\output.gif"
-& $magickExe -delay 0 -loop 0 -dispose previous "$dir\frame*.png" $outFile
+& $magickExe -delay 0 -loop 0 "$dir\frame*.png" $outFile
 gci $dir frame*.png | Remove-Item
 ```
 ![output](https://github.com/user-attachments/assets/97eea1c9-5fd5-4e62-91db-60d5094dac17)
