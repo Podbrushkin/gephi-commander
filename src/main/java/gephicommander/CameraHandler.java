@@ -116,7 +116,7 @@ public class CameraHandler {
     public static float getScalingForIteration(int iteration) {
         int iGlobalMax =  GephiCommander.LayoutStatus.globalIterationsMax;
         //TODO: fix
-        if (scalingPositions != null) {
+        if (scalingPositions == null) {
             scalingPositions = new float[scalingPositionsExprs.length];
             for (int i = 0; i < scalingPositionsExprs.length; i++) {
                 scalingPositions[i] = evaluateExpression(scalingPositionsExprs[i]);
@@ -165,11 +165,13 @@ public class CameraHandler {
         if (positions.length != values.length) {
             throw new IllegalArgumentException("Positions array must match values array length");
         }
+        boolean positionsOutOfBounds = false;
         for (float pos : positions) {
             if (pos < 0 || pos > 1) {
-                throw new IllegalArgumentException("Positions must be between 0 and 1");
+                positionsOutOfBounds = true;
             }
         }
+        if (positionsOutOfBounds) System.err.println("Positions are not between 0 and 1");
         
 
         // Calculate target position (0-1)

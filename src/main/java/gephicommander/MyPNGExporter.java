@@ -169,7 +169,11 @@ class MyPNGExporter extends PNGExporter {
                 imgGraphics.setColor(Color.GRAY);
                 // srcGraphics.drawLine(width/2, height/2, (int)pointTr.x, (int)pointTr.y);
                 // srcGraphics.fillOval(0, 0, width/100, height/100);
-                var str = String.format("sc=%s\ntr=%s",target.getScaling(),target.getTranslate());
+                var str = String.format("i=%s sc=%s trX=%s trY=%s",
+                    GephiCommander.LayoutStatus.globalIterationsDone,
+                    target.getScaling(),
+                    target.getTranslate().x,
+                    target.getTranslate().y);
                 float fontSize = heightImg/18;  // Ok for any resolution
                 var font = imgGraphics.getFont().deriveFont(fontSize);
                 imgGraphics.setFont(font);
