@@ -6,6 +6,7 @@ import java.awt.Image;
 import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.io.OutputStream;
+import java.util.Map;
 
 import javax.imageio.ImageIO;
 import javax.script.ScriptEngine;
@@ -206,9 +207,10 @@ class MyPNGExporter extends PNGExporter {
                 var centerPoint = CameraHandler.getCenterForIteration(GephiCommander.LayoutStatus.globalIterationsDone);
                 var st = CoordUtils.getToCenterOn(widthImg, heightImg, target.getScaling(), centerPoint);
                 target.getTranslate().set(st.translateX, st.translateY);
+
+                engine.put("centerOnX", centerPoint.x);
+                engine.put("centerOnY", centerPoint.y);
             }
-            // engine.put("bounds", GephiStarter.getGraphBounds(0.01f).toString());
-            
 
             target.refresh();
             

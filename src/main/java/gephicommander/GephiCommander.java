@@ -116,7 +116,7 @@ import com.google.gson.JsonParser;
 public class GephiCommander {
     static ScriptEngine engine = new ScriptEngineManager().getEngineByName("JavaScript");
     static JsonObject globalExport = new JsonObject();
-    private final static String DELAYED_PROP = "delayed";
+    private final static String DELAYED_PROP = "delay";
     
     // static Map<Integer, JsonArray> iterToOperation = new HashMap<>();
     private static JsonArray delayedOperations = new JsonArray();
@@ -1110,7 +1110,7 @@ public class GephiCommander {
             default : {column = graphModel.getNodeTable().getColumn(desiredColumn); break;}
         }
         if (column == null) {
-            String inf = String.format("Nodes don't have %s column, these exist: %s",getColumnsInfo(Node.class));
+            String inf = String.format("Nodes don't have %s column, these exist: %s", desiredColumn, getColumnsInfo(Node.class));
             throw new IllegalArgumentException(inf);
         }
         return column;
@@ -1145,7 +1145,8 @@ public class GephiCommander {
                 if (!applyLabel) continue;
             }
             if (columnName == null) {
-                nodeOrEdge.removeAttribute("Label");
+                // nodeOrEdge.removeAttribute("Label");
+                nodeOrEdge.setLabel(null);
                 continue;
             }
             Column column = nodeOrEdge instanceof Node ? 
@@ -1155,7 +1156,14 @@ public class GephiCommander {
             String newLabel = null;
             if (column != null && column.exists()) {
                 // System.out.printf("column %s exists=%s %n",column,column.exists());
-                newLabel = nodeOrEdge.getAttribute(column).toString();
+                Object value = nodeOrEdge.getAttribute(column);
+                if (value == null) {
+                    var elMap = getElementAsMap(graphModel, nodeOrEdge);
+                    System.out.printf("node %s don't have column=%s, these attrs exist: %s%n",
+                        elMap,column, Arrays.toString(nodeOrEdge.getAttributes()));
+                    
+                }
+                newLabel = String.valueOf(value);
             } else {
                 newLabel = getElementAsMap(graphModel, nodeOrEdge).get(columnName).toString();
             }
