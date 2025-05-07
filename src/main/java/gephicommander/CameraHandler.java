@@ -116,7 +116,7 @@ public class CameraHandler {
     public static float getScalingForIteration(int iteration) {
         int iGlobalMax =  GephiCommander.LayoutStatus.globalIterationsMax;
         //TODO: fix
-        if (scalingPositions == null) {
+        if (scalingPositions == null && scalingPositionsExprs != null) {
             scalingPositions = new float[scalingPositionsExprs.length];
             for (int i = 0; i < scalingPositionsExprs.length; i++) {
                 scalingPositions[i] = evaluateExpression(scalingPositionsExprs[i]);

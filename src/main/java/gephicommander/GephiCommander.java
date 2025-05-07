@@ -15,6 +15,8 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -80,6 +82,7 @@ import org.gephi.io.processor.plugin.DefaultProcessor;
 import org.gephi.layout.plugin.force.StepDisplacement;
 import org.gephi.layout.plugin.force.yifanHu.YifanHuLayout;
 import org.gephi.layout.plugin.force.yifanHu.YifanHuProportional;
+import org.gephi.layout.plugin.forceAtlas.ForceAtlas;
 import org.gephi.layout.plugin.forceAtlas2.ForceAtlas2;
 import org.gephi.layout.plugin.fruchterman.FruchtermanReingoldBuilder;
 import org.gephi.layout.plugin.noverlap.NoverlapLayout;
@@ -87,6 +90,7 @@ import org.gephi.layout.plugin.noverlap.NoverlapLayoutBuilder;
 import org.gephi.layout.plugin.openord.OpenOrdLayoutBuilder;
 import org.gephi.layout.plugin.random.Random;
 import org.gephi.layout.plugin.random.RandomLayout;
+import org.gephi.layout.plugin.scale.Expand;
 import org.gephi.layout.spi.Layout;
 import org.gephi.layout.spi.LayoutProperty;
 import org.gephi.preview.api.G2DTarget;
@@ -105,6 +109,7 @@ import org.gephi.statistics.plugin.EigenvectorCentrality;
 import org.gephi.statistics.plugin.GraphDistance;
 import org.gephi.statistics.plugin.Modularity;
 import org.gephi.toolkit.demos.plugins.preview.PreviewSketch;
+import org.jfree.chart.plot.DefaultDrawingSupplier;
 import org.openide.nodes.Node.Property;
 import org.openide.util.Lookup;
 
@@ -328,6 +333,8 @@ public class GephiCommander {
 
         //Append imported data to GraphAPI
         importController.process(container, new DefaultProcessor(), workspace);
+
+        System.out.printf("Columns: Node:%n%s Edge:%n%s",getColumnsInfo(Node.class),getColumnsInfo(Edge.class));
     }
     private static void applyStatistics(JsonArray options) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
@@ -437,11 +444,17 @@ public class GephiCommander {
                 case "YifanHuProportional" : {
                     applyYifanHuProportional(graphModel, options); break;
                 }
+                case "ForceAtlas" : {
+                    applyForceAtlas(graphModel, options); break;
+                }
                 case "ForceAtlas2" : {
                     applyForceAtlas2(graphModel, options); break;
                 }
                 case "OpenOrd" : {
                     applyOpenOrd(graphModel, options); break;
+                }
+                case "Expansion" : {
+                    applyExpansionLayout(graphModel, options); break;
                 }
                 case "RandomLayout" : {
                     applyRandomLayout(graphModel, options); break;
@@ -457,8 +470,13 @@ public class GephiCommander {
                     runLayout(layout, options);
                     break;
                 }
-                default : System.out.println("No such layout: "+name);
-    
+                default : {
+                    String msg = String.format("No such layout: %s. These available: %s",name,
+                        List.of("YifanHu","YifanHuProportional","ForceAtlas2",
+                            "OpenOrd","RandomLayout","Noverlap","FruchtermanReingold","NoOp")
+                        );
+                    throw new IllegalArgumentException(msg);
+                }
             }
         }
     }
@@ -772,9 +790,12 @@ public class GephiCommander {
         
         var type = options.get("type").getAsString();
         var columnId = options.get("columnId").getAsString();
-        // var values =  options.get("values").getAsJsonArray();
-        var values = options.has("values") ? 
-            options.get("values").getAsJsonArray() : new JsonArray();
+        
+        JsonArray valuesInclude = options.has("valuesInclude") ? 
+            options.get("valuesInclude").getAsJsonArray() : new JsonArray();
+        JsonArray valuesExclude = options.has("valuesExclude") ? 
+            options.get("valuesExclude").getAsJsonArray() : new JsonArray();
+        
         var indices = new ArrayList<Integer>();
         if (options.has("indices")) {
              options.get("indices").getAsJsonArray().iterator().forEachRemaining((el)->indices.add(el.getAsInt()));
@@ -782,15 +803,7 @@ public class GephiCommander {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
 
         var appearanceModel = Lookup.getDefault().lookup(AppearanceController.class).getModel();
-        // Column column = graphModel.getNodeTable().getColumn(columnId);
-        /* Column column = switch (type) {
-            case "node" -> graphModel.getNodeTable().getColumn(columnId);
-            case "edge" -> graphModel.getEdgeTable().getColumn(columnId);
-            default -> {throw new IllegalStateException("Type should be node or edge, not "+type);}
-        }; */
-
-        // var nodePartition = appearanceModel.getNodePartition(column);
-        // printPartitionInfo(nodePartition);
+        
         PartitionBuilder.PartitionFilter filter = null;
         Column column = null;
         try {
@@ -811,21 +824,17 @@ public class GephiCommander {
             // e.
         }
         var columnType = column.getTypeClass();
-        /* BiFunction<Class,JsonElement,Object> getValFromJsonEl = (targetType, jsonEl) -> {
-            if (Number.class.isAssignableFrom(targetType)) {
-                return jsonEl.getAsNumber();
-            }
-            if (String.class.isAssignableFrom(targetType)) {
-                return jsonEl.getAsString();
-            }
-            if (Boolean.class.isAssignableFrom(targetType)) {
-                return jsonEl.getAsBoolean();
-            }
-            throw new IllegalStateException("Unknown type: "+targetType);
-        }; */
-        // 
+        
         printPartitionInfo(filter.getPartition());
-        filter.unselectAll();
+
+        // If exclude specified and include not, include all by default
+        if (valuesInclude.size() == 0 && 
+            indices.size() == 0 &&
+            valuesExclude.size() > 0) {
+                // filter.selectAll();  // throws NPE
+                filter.getPartition().getSortedValues(graphModel.getGraphVisible()).forEach(filter::addPart);
+            }
+        
         if (indices.size() > 0) {
             var sortedValuesColl = filter.getPartition().getSortedValues(graphModel.getGraphVisible());
             @SuppressWarnings("unchecked")
@@ -838,19 +847,34 @@ public class GephiCommander {
 
         }
         
-        for (var p : values) {
-            if (Number.class.isAssignableFrom(columnType)) {
-                filter.addPart(p.getAsInt());
-            }
-            if (String.class.isAssignableFrom(columnType)) {
+
+        for (JsonElement p : valuesInclude) {
+            if (columnType.equals(String.class))
                 filter.addPart(p.getAsString());
-            }
-            if (Boolean.class.isAssignableFrom(columnType)) {
+            else if (columnType.equals(Double.class))
+                filter.addPart(p.getAsDouble());
+            else if (columnType.equals(Long.class))
+                filter.addPart(p.getAsLong());
+            else if (columnType.equals(Boolean.class))
                 filter.addPart(p.getAsBoolean());
-            }
-            
+            else 
+                throw new IllegalStateException("Column type not supported: "+columnType);
         }
-        System.out.printf("partitionFilter.getParts(): %s%n",filter.getParts());
+        
+        for (JsonElement p : valuesExclude) {
+            if (columnType.equals(String.class))
+                filter.removePart(p.getAsString());
+            else if (columnType.equals(Double.class))
+                filter.removePart(p.getAsDouble());
+            else if (columnType.equals(Long.class))
+                filter.removePart(p.getAsLong());
+            else if (columnType.equals(Boolean.class))
+                filter.removePart(p.getAsBoolean());
+            else 
+                throw new IllegalStateException("Column type not supported: "+columnType);
+        }
+        // filter.selectAll();
+        System.out.printf("partitionFilter columnType=%s, .getParts()= %s%n",columnType,filter.getParts());
         FilterController filterController = Lookup.getDefault().lookup(FilterController.class);
         var query = filterController.createQuery(filter);
         return query;
@@ -864,7 +888,7 @@ public class GephiCommander {
         System.out.printf("Distinct values of column %s:%n",columnId);
         System.out.println("value\tpercentage");
         int i = 0;
-        for (var el : coll) {
+        for (Object el : coll) {
             float perc = partition.percentage(el, graph);
             System.out.printf("%s\t%s%n",el,perc);
             if (i++ == 20) {
@@ -942,6 +966,15 @@ public class GephiCommander {
         var query = filterController.createQuery(filterResult);
         return query;
     }
+    private static void applyForceAtlas(GraphModel graphModel, JsonObject options) {
+        var layout = new ForceAtlas().buildLayout();
+        layout.resetPropertiesValues();
+        layout.setGraphModel(graphModel);
+        setLayoutProperties(layout, options);
+        printLayoutProperties(layout);
+        
+        runLayout(layout,options);
+    }
     private static void applyForceAtlas2(GraphModel graphModel, JsonObject options) {
         ForceAtlas2 layout = new ForceAtlas2(null);
         layout.setGraphModel(graphModel);
@@ -974,6 +1007,13 @@ public class GephiCommander {
     private static void applyOpenOrd(GraphModel graphModel, JsonObject options) {
         var layout =  new OpenOrdLayoutBuilder().buildLayout();
         layout.resetPropertiesValues();
+        layout.setGraphModel(graphModel);
+        setLayoutProperties(layout, options);
+        printLayoutProperties(layout);
+        runLayout(layout, options);
+    }
+    private static void applyExpansionLayout(GraphModel graphModel, JsonObject options) {
+        var layout = new Expand().buildLayout();
         layout.setGraphModel(graphModel);
         setLayoutProperties(layout, options);
         printLayoutProperties(layout);
@@ -1017,6 +1057,19 @@ public class GephiCommander {
                 System.out.println(name+" = "+value);
             } catch (Exception e) {e.printStackTrace();}
         }
+    }
+    public static String getLayoutProperties(Layout layout) {
+        var sb = new StringBuilder();
+        
+        // sb.append(layout.getClass().getSimpleName()+" properties:\n");
+        for (var prop : layout.getProperties()) {
+            try {
+                var name = prop.getProperty().getName();
+                var value = prop.getProperty().getValue();
+                sb.append(name+" = "+value+"\n");
+            } catch (Exception e) {e.printStackTrace();}
+        }
+        return sb.toString();
     }
 
     private static void setLayoutProperties(Layout layout, JsonObject options) {
@@ -1067,7 +1120,7 @@ public class GephiCommander {
             }
             //System.out.printf("%s\t%s%n",name,type);
         }
-        Set<String> predefinedOptionNames = Set.of("name","steps","maxSteps","export","exportEach");
+        Set<String> predefinedOptionNames = Set.of("name","steps","maxSteps","maxTime","export","exportEach");
         Set<String> userOpts = options.keySet();
         var unknownUserOpts = new HashSet<String>(userOpts);
         unknownUserOpts.removeAll(predefinedOptionNames);
@@ -1158,12 +1211,12 @@ public class GephiCommander {
                 // System.out.printf("column %s exists=%s %n",column,column.exists());
                 Object value = nodeOrEdge.getAttribute(column);
                 if (value == null) {
-                    var elMap = getElementAsMap(graphModel, nodeOrEdge);
-                    System.out.printf("node %s don't have column=%s, these attrs exist: %s%n",
-                        elMap,column, Arrays.toString(nodeOrEdge.getAttributes()));
+                    newLabel = "";
+                    // var elMap = getElementAsMap(graphModel, nodeOrEdge);
+                    // System.out.printf("node %s don't have column=%s, these attrs exist: %s%n",
+                    //     elMap,column, Arrays.toString(nodeOrEdge.getAttributes()));
                     
-                }
-                newLabel = String.valueOf(value);
+                } else newLabel = String.valueOf(value);
             } else {
                 newLabel = getElementAsMap(graphModel, nodeOrEdge).get(columnName).toString();
             }
@@ -1496,6 +1549,7 @@ public class GephiCommander {
 
     private static void runLayout(Layout layout, JsonObject layoutOptions) {
         String layoutName = layout.getClass().getSimpleName();
+        LayoutStatus.lastLayout = layout;
         
         // Local has more priority than global
         JsonObject exportOptions = layoutOptions.has("export") ? 
@@ -1503,6 +1557,12 @@ public class GephiCommander {
             globalExport;
         
         System.out.println("Active export options: "+exportOptions);
+
+        if (LayoutStatus.globalStartInstant == null)
+            LayoutStatus.globalStartInstant = Instant.now();
+
+        LocalDateTime start =  LocalDateTime.now();
+        Float maxTime = layoutOptions.has("maxTime") ? layoutOptions.get("maxTime").getAsFloat() : null;
         
         LayoutStatus.localIterationsMax = layoutOptions.get("steps").getAsInt();
 
@@ -1520,13 +1580,13 @@ public class GephiCommander {
         engine.put("iGlobalMax", LayoutStatus.globalIterationsMax);
         engine.put("graph", graph); // this is used for getNode(id).x()
         
-        
 
         for (LayoutStatus.localIteration = 0; LayoutStatus.localIteration < LayoutStatus.localIterationsMax; LayoutStatus.localIteration++) {
             layout.goAlgo();
             engine.put("i", LayoutStatus.localIteration);
             engine.put("iGlobal", LayoutStatus.globalIterationsDone++);
-            // engine.put("sc", null);
+            
+            LayoutStatus.globalTimeElapsed = (int)Duration.between(LayoutStatus.globalStartInstant, Instant.now()).getSeconds();
 
             JsonArray opsToDo = new JsonArray();
             for (int i = 0; i < delayedOperations.size(); i++) {
@@ -1556,9 +1616,17 @@ public class GephiCommander {
             if (LayoutStatus.localExportEach != null && 
                 LayoutStatus.localExportEach != 0 &&
                 LayoutStatus.localIteration % LayoutStatus.localExportEach == 0) {
-                // measureGraphBounds();
+                measureGraphBounds();
                 export(exportOptions);
             }
+
+            // break if maxTime seconds elapsed
+            if (maxTime != null && 
+                Duration.between(start, LocalDateTime.now()).getSeconds() > maxTime) {
+                    System.out.printf("Time limit reached at %s iteration.",LayoutStatus.localIteration);
+                    break;
+            }
+                    
         }
         LayoutStatus.localIteration = null;
         LayoutStatus.localExportEach = null;
@@ -1590,5 +1658,9 @@ public class GephiCommander {
         static Integer localIteration = null; // in current layout
         static Integer localIterationsMax = null;
         static Integer localExportEach = null;
+
+        static Layout lastLayout = null;
+        static Instant globalStartInstant = null;
+        static int globalTimeElapsed = 0;   //sec
     }
 }

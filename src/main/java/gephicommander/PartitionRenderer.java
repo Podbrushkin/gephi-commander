@@ -3,8 +3,8 @@ package gephicommander;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.geom.Point2D;
+import java.util.Collection;
 
 import org.gephi.appearance.api.Partition;
 import org.gephi.graph.api.Graph;
@@ -13,6 +13,7 @@ import org.gephi.graph.api.GraphModel;
 import org.openide.util.Lookup;
 
 public class PartitionRenderer {
+    private static int lastY = 0;
 
     public static void draw(Graphics g2d, Partition partition, Graph graph, int fontSize, Point2D topLeft) {
         if (graph == null) {
@@ -22,20 +23,17 @@ public class PartitionRenderer {
         }
 
         Font originalFont = g2d.getFont();
-
-        // int fontSize = 72;
-        
         g2d.setFont(new Font("SansSerif", Font.PLAIN, fontSize));
-        g2d.setColor(Color.BLACK);
+        g2d.setColor(Color.GRAY);
 
         // Calculate position (top-left corner with margin)
         // int margin = 20;
         int x = (int)topLeft.getX();
-        int y = (int)topLeft.getY();
+        int y = (int)topLeft.getY()+fontSize;
         
         String columnId = partition.getColumn().getId();
         // Draw header
-        g2d.drawString(String.format("Partition: %s (Nodes)", columnId), x, y);
+        g2d.drawString(String.format("Partition by %s:", columnId), x, y);
         y += fontSize * 1.5;
 
         // Draw column headers
@@ -47,9 +45,15 @@ public class PartitionRenderer {
         int maxItems = 10; // Limit number of items shown
         int count = 0;
 
-        for (Object value : partition.getSortedValues(graph)) {
+        Collection values = partition.getSortedValues(graph);
+        // for (int i = 0; i < values.size(); i++) {
+            
+        // }
+        for (Object value : values) {
             if (count++ >= maxItems) {
-                g2d.drawString("... (more items not shown)", x, y);
+                int remaining = values.size()-count;
+                String str = String.format("... (%s more)", remaining);
+                g2d.drawString(str, x, y);
                 break;
             }
 
@@ -63,6 +67,7 @@ public class PartitionRenderer {
 
             // Draw text info
             // g2d.setColor(fontColor != null ? fontColor : Color.BLACK);
+            if (value == null) value = "<null>";
             g2d.drawString(String.format("%-20s %8d %9.1f%%",
                     truncate(value.toString(), 20),
                     valueCount,
@@ -71,8 +76,29 @@ public class PartitionRenderer {
 
             y += fontSize * 1.2;
         }
-
+        lastY = y;
         g2d.setFont(originalFont);
+    }
+
+    public static void drawMultilineString(Graphics g2d, String string, int fontSize) {
+        String[] lines = string.split("\r?\n", -1);
+        int x = fontSize;   // left margin
+        
+        Font originalFont = g2d.getFont();
+        g2d.setFont(new Font("SansSerif", Font.PLAIN, fontSize));
+
+        for (var line : lines) {
+            lastY += fontSize * 1.2;
+            g2d.drawString(line, x, lastY);
+        }
+        g2d.setFont(originalFont);
+    }
+    public static String humanReadable(Integer number) {
+        if (number == null) return "null";
+        if (number < 1000) return String.valueOf(number);
+        int exp = (int) (Math.log(number) / Math.log(1000));
+        char suffix = "KMBT".charAt(exp - 1);
+        return String.format("%.1f%c", number / Math.pow(1000, exp), suffix);
     }
     private static String truncate(String str, int length) {
         return str.length() > length ? str.substring(0, length-3) + "..." : str;

@@ -25,6 +25,9 @@ import org.openide.util.Lookup;
 
 import com.google.gson.JsonObject;
 
+import gephicommander.GephiCommander.LayoutStatus;
+import static gephicommander.PartitionRenderer.humanReadable;
+
 class MyPNGExporter extends PNGExporter {
     
     private static ScriptEngine engine = GephiCommander.engine;
@@ -204,6 +207,22 @@ class MyPNGExporter extends PNGExporter {
                 }
                 
                 PartitionRenderer.draw(imgGraphics, GephiCommander.partition, null, fontSize, new Point2D.Float(x, y));
+            }
+            if (options.has("drawLayoutStatus") &&
+                options.get("drawLayoutStatus").getAsBoolean()
+                ) {
+                var lastLayout = GephiCommander.LayoutStatus.lastLayout;
+                var sb = new StringBuilder();
+                // String globalMax = PartitionRenderer.humanReadable
+                sb.append(String.format("%s(%s/%s) global(%s/%s) %ss%n",
+                    lastLayout.getClass().getSimpleName(),
+                    GephiCommander.LayoutStatus.localIteration,humanReadable(GephiCommander.LayoutStatus.localIterationsMax),
+                    GephiCommander.LayoutStatus.globalIterationsDone,humanReadable(GephiCommander.LayoutStatus.globalIterationsMax),
+                    LayoutStatus.globalTimeElapsed
+                ));
+                sb.append(GephiCommander.getLayoutProperties(lastLayout));
+                
+                PartitionRenderer.drawMultilineString(imgGraphics, sb.toString(), heightImg/40);
             }
             
             BufferedImage img = new BufferedImage(widthImg, heightImg, BufferedImage.TYPE_INT_ARGB);

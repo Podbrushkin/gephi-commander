@@ -117,6 +117,9 @@ graph
 ]
 '@ > sampleGraphMini.gml
 ```
+Other sources:
+* https://networks.skewed.de/
+* https://github.com/gephi/gephi/wiki/datasets
 
 ## Size nodes by column
 
@@ -497,4 +500,48 @@ $graphFile = Get-ChildItem -recurse lesmis.gml
     @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.001; 'LinLog mode'=$true; steps=[int]::MaxValue }
   )}
 ) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+```
+
+## Advanced example
+
+```powershell
+$graphFile = Get-ChildItem -Recurse polblogs.gml
+$dir = $graphFile.Directory
+$frameFile = Join-Path $dir ('frame'+$graphFile.BaseName+'.png')
+
+@(
+  @{op='import'; file=$graphFile.FullName }
+  @{op='preview'; 'background-color'='Black'; nodeLabelColor='White'; }
+  @{op='setExport'; file=$frameFile; resolution=@(2560,1440); timestamp=$true; exportEach=1;
+    PNGExporter=@{ drawPartition=$true; drawPartitionCoord=@(0,0); drawDebug=$false; };
+  }
+  @{op='setCamera';
+    scaling=@("0.3*h/480",'0.5*h/480'); 
+    scalingPositions=@("525/iGlobalMax","550/iGlobalMax");
+    centerOn=@( @(0,0), @("graph.getNode('855').x()","graph.getNode('855').y()"), @('centerOnX','centerOnY') );
+    centerOnPositions=@("525/iGlobalMax","550/iGlobalMax","551/iGlobalMax");
+  }
+  @{op='filters'; delay="200/iGlobalMax"; values=@(
+    @{name='Partition'; type='node'; columnId='value'; indices=@(0);  }
+  )}
+  @{op='disableFilters'; delay="250/iGlobalMax";}
+  @{op='filters'; delay="300/iGlobalMax"; values=@(
+    @{name='Partition'; type='node'; columnId='value'; indices=@(1);  }
+  )}
+  @{op='disableFilters'; delay="350/iGlobalMax";}
+  @{op='colorNodesBy';column='value'; mode='partition'; }
+  @{op='colorNodesBy';column='outDegree'; mode='ranking'; delay="400/iGlobalMax"; }
+  @{op='sizeNodesBy';column='outDegree'; minSize=1; maxSize=30; delay="450/iGlobalMax"; }
+  @{op='labelNodesBy';column=$null; condition='el.outDegree < 100'; }
+  @{op='preview'; 'nodeLabelShow'=$true; delay="500/iGlobalMax"; }
+  @{op='layouts'; values=@(
+    @{name='ForceAtlas2'; 'Tolerance (speed)' = 0.04; steps=100; }
+    @{name='ForceAtlas2'; steps=600; }
+  )}
+) | ConvertTo-Json -d 9 | java -jar $gephiCommander -
+
+
+$outFile = "$dir\output$(Get-Date -Format FileDateTime).gif"
+& $magickExe -delay 0 -loop 0 "$dir\frame*.png" $outFile
+#gci $dir frame*.png | Remove-Item
 ```
