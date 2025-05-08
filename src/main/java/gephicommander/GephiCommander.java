@@ -169,6 +169,12 @@ public class GephiCommander {
                     var statsOpts = op.get("values").getAsJsonArray();
                     applyStatistics(statsOpts);
                     break;
+                case "hideNodes":
+                    hideNodes(op.getAsJsonObject());
+                    break;
+                case "showNodes":
+                    showNodes(op.getAsJsonObject());
+                    break;
                 case "filters":
                     applyFilters(op.get("values").getAsJsonArray());
                     break;
@@ -218,8 +224,50 @@ public class GephiCommander {
         }
     }
 
-    // private static void setGlobal(JsonObject op) {}
+    private static void hideNodes(JsonObject options) {
+        try {
+            String expr = options.get("expr").getAsString();
+            var gm = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+            var graph = gm.getGraph(gm.getVisibleView());
+            printCounts(graph);
+            var nodesToKeep = new ArrayList<Node>();
+            for (Node node : graph.getNodes()) {
+                var map = getElementAsMap(gm, node);
+                engine.put("node", map);
+                boolean pass = (boolean)engine.eval(expr);
+                if (!pass) nodesToKeep.add(node);
+            }
+            // graph.removeAllNodes(nodesToKeep);
+            var newView = gm.createView();
+            var newGraph = gm.getGraph(newView);
+            newGraph.addAllNodes(nodesToKeep);
+            gm.setVisibleView(newView);
 
+            printCounts(graph);
+            printCounts(newGraph);
+            printCounts(gm.getGraph());
+        } catch (ScriptException e) {
+            throw new RuntimeException(e);
+        }
+    }
+    private static void showNodes(JsonObject options) {
+        try {
+            String expr = options.get("expr").getAsString();
+            var gm = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
+            var graph = gm.getGraph();
+            System.out.println("graph.getNodeCount()="+graph.getNodeCount());
+            var graphVisible = gm.getGraph(gm.getVisibleView());
+            for (Node node : graph.getNodes().toArray()) {
+                var map = getElementAsMap(gm, node);
+                engine.put("node", map);
+                boolean pass = (boolean)engine.eval(expr);
+                if (pass && !graphVisible.contains(node)) 
+                    graphVisible.addNode(node);
+            }
+        } catch (ScriptException e) {
+            throw new RuntimeException(e);
+        }
+    }
     private static int countLayoutIterationsTotal(JsonArray optionsGlobal) {
         return StreamSupport.stream(optionsGlobal.spliterator(), false)
             .map(JsonElement::getAsJsonObject)
