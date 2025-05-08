@@ -13,7 +13,7 @@ import org.gephi.graph.api.GraphModel;
 import org.openide.util.Lookup;
 
 public class PartitionRenderer {
-    private static int lastY = 0;
+    private static final int lastY = 0;
 
     public static void draw(Graphics g2d, Partition partition, Graph graph, int fontSize, Point2D topLeft) {
         if (graph == null) {
@@ -76,20 +76,20 @@ public class PartitionRenderer {
 
             y += fontSize * 1.2;
         }
-        lastY = y;
+        // lastY = y;
         g2d.setFont(originalFont);
     }
 
     public static void drawMultilineString(Graphics g2d, String string, int fontSize) {
         String[] lines = string.split("\r?\n", -1);
         int x = fontSize;   // left margin
-        
+        int y = lastY;
         Font originalFont = g2d.getFont();
         g2d.setFont(new Font("SansSerif", Font.PLAIN, fontSize));
 
         for (var line : lines) {
-            lastY += fontSize * 1.2;
-            g2d.drawString(line, x, lastY);
+            y += fontSize * 1.2;
+            g2d.drawString(line, x, y);
         }
         g2d.setFont(originalFont);
     }

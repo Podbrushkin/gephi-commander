@@ -109,7 +109,6 @@ import org.gephi.statistics.plugin.EigenvectorCentrality;
 import org.gephi.statistics.plugin.GraphDistance;
 import org.gephi.statistics.plugin.Modularity;
 import org.gephi.toolkit.demos.plugins.preview.PreviewSketch;
-import org.jfree.chart.plot.DefaultDrawingSupplier;
 import org.openide.nodes.Node.Property;
 import org.openide.util.Lookup;
 
@@ -229,23 +228,19 @@ public class GephiCommander {
             String expr = options.get("expr").getAsString();
             var gm = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
             var graph = gm.getGraph(gm.getVisibleView());
-            printCounts(graph);
-            var nodesToKeep = new ArrayList<Node>();
+            
+            var nodesSelected = new ArrayList<Node>();
             for (Node node : graph.getNodes()) {
                 var map = getElementAsMap(gm, node);
                 engine.put("node", map);
                 boolean pass = (boolean)engine.eval(expr);
-                if (!pass) nodesToKeep.add(node);
+                if (!pass) nodesSelected.add(node);
             }
-            // graph.removeAllNodes(nodesToKeep);
-            var newView = gm.createView();
+            var newView = gm.copyView(gm.getVisibleView(), true, false);
             var newGraph = gm.getGraph(newView);
-            newGraph.addAllNodes(nodesToKeep);
+            newGraph.retainNodes(nodesSelected);
             gm.setVisibleView(newView);
-
-            printCounts(graph);
-            printCounts(newGraph);
-            printCounts(gm.getGraph());
+            System.out.printf("Nodes count changed from %s to %s%n",graph.getNodeCount(),newGraph.getNodeCount());
         } catch (ScriptException e) {
             throw new RuntimeException(e);
         }
