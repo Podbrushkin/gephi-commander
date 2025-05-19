@@ -94,7 +94,7 @@ public class CameraHandler {
     }
 
     public static Point2D.Float getCenterForIteration(int iteration) {
-        int iGlobalMax =  GephiCommander.LayoutStatus.globalIterationsMax;
+        int iGlobalMax =  LayoutStatus.globalIterationsMax;
 
         if (centerPositionsExprs != null) {
             centerPositions = new float[centerPositionsExprs.length];
@@ -114,7 +114,7 @@ public class CameraHandler {
         return new Point2D.Float(x, y);
     }
     public static float getScalingForIteration(int iteration) {
-        int iGlobalMax =  GephiCommander.LayoutStatus.globalIterationsMax;
+        int iGlobalMax =  LayoutStatus.globalIterationsMax;
         //TODO: fix
         if (scalingPositions == null && scalingPositionsExprs != null) {
             scalingPositions = new float[scalingPositionsExprs.length];

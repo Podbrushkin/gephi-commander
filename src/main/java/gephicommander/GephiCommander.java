@@ -6,7 +6,6 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
-import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileReader;
@@ -15,6 +14,7 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -356,7 +356,10 @@ public class GephiCommander {
         
         //Init a project - and therefore a workspace
         ProjectController pc = Lookup.getDefault().lookup(ProjectController.class);
-        pc.newProject();
+        
+        if (pc.getCurrentProject() == null)
+            pc.newProject();
+        
         Workspace workspace = pc.getCurrentWorkspace();
 
         ImportController importController = Lookup.getDefault().lookup(ImportController.class);
@@ -364,11 +367,26 @@ public class GephiCommander {
         //Import file       
         Container container;
         try {
+            
+            
+            // Avoid adjacency list mode
+            /* FileImporter fileImporter = null;
+            if (file.getName().endsWith(".csv") || file.getName().endsWith(".tsv")) {
+                fileImporter = new ImporterSpreadsheetCSVBuilder().buildImporter();
+            } else
+                fileImporter = importController.getFileImporter(file); */
+            
             container = importController.importFile(file);
+            // container = importController.importFile(file, fileImporter);
+            // fileImporter.getContainer().setAllowAutoNode
             container.getLoader().setEdgeDefault(EdgeDirectionDefault.DIRECTED);   //Force DIRECTED
             container.getLoader().setAllowParallelEdge(true);
             container.getLoader().setEdgesMergeStrategy(EdgeMergeStrategy.NO_MERGE);
             container.getLoader().setAutoScale(false);
+            container.getLoader().setAllowAutoNode(false);
+            // container.getUnloader().
+            // System.out.println("AllowAutoNode"+container.getUnloader().allowAutoNode());
+            
         } catch (Exception ex) {
             ex.printStackTrace();
             return;
@@ -378,6 +396,12 @@ public class GephiCommander {
         importController.process(container, new DefaultProcessor(), workspace);
 
         System.out.printf("Columns: Node:%n%s Edge:%n%s",getColumnsInfo(Node.class),getColumnsInfo(Edge.class));
+
+        if (options.has("coords")) {
+            var dotPlainFile = Path.of(options.get("coords").getAsString()).normalize();
+            var graph = Lookup.getDefault().lookup(GraphController.class).getGraphModel().getGraph();
+            new DotPlainParser().importNodeCoordinates(graph, dotPlainFile);
+        }
     }
     private static void applyStatistics(JsonArray options) {
         var graphModel = Lookup.getDefault().lookup(GraphController.class).getGraphModel();
@@ -1324,7 +1348,7 @@ public class GephiCommander {
             );
             throw new IllegalArgumentException(msg);
         }
-        System.out.printf("colorElementsByColumn: column %s exists=%s %n",column,column.exists());
+        // System.out.printf("colorElementsByColumn: column %s exists=%s %n",column,column.exists());
 
         String mode = options.get("mode").getAsString().toLowerCase();
 
@@ -1395,7 +1419,7 @@ public class GephiCommander {
                 for (Element el : iter) {
                     try {
                         String colorValue = el.getAttribute(column).toString();
-                        System.out.printf("each> column %s exists=%s %n",column,column.exists());
+                        // System.out.printf("each> column %s exists=%s %n",column,column.exists());
                         Color color = GephiCommander.parseColor(colorValue);
                         if (color != null) {
                             el.setColor(color);
@@ -1592,7 +1616,8 @@ public class GephiCommander {
 
     private static void runLayout(Layout layout, JsonObject layoutOptions) {
         String layoutName = layout.getClass().getSimpleName();
-        LayoutStatus.lastLayout = layout;
+        
+        
         
         // Local has more priority than global
         JsonObject exportOptions = layoutOptions.has("export") ? 
@@ -1607,15 +1632,21 @@ public class GephiCommander {
         LocalDateTime start =  LocalDateTime.now();
         Float maxTime = layoutOptions.has("maxTime") ? layoutOptions.get("maxTime").getAsFloat() : null;
         
-        LayoutStatus.localIterationsMax = layoutOptions.get("steps").getAsInt();
+        var ls = new LayoutStatus();
+        LayoutStatus.layoutsApplied.add(ls);
+        ls.layout = layout;
+
+        ls.localIterationsMax = layoutOptions.get("steps").getAsInt();
 
         
         if (exportOptions != null && exportOptions.has("exportEach")) {
-            LayoutStatus.localExportEach = exportOptions.get("exportEach").getAsInt();
+            ls.localExportEach = exportOptions.get("exportEach").getAsInt();
         }
         
+
+        // LayoutStatus.layoutsApplied.add(layout);
         
-        System.out.printf("Applying layout %s with %s steps...%n", layoutName, LayoutStatus.localIterationsMax);
+        System.out.printf("Applying layout %s with %s steps...%n", layoutName, ls.localIterationsMax);
         layout.initAlgo();
 
         
@@ -1624,9 +1655,9 @@ public class GephiCommander {
         engine.put("graph", graph); // this is used for getNode(id).x()
         
 
-        for (LayoutStatus.localIteration = 0; LayoutStatus.localIteration < LayoutStatus.localIterationsMax; LayoutStatus.localIteration++) {
+        for (ls.localIteration = 0; ls.localIteration < ls.localIterationsMax; ls.localIteration++) {
             layout.goAlgo();
-            engine.put("i", LayoutStatus.localIteration);
+            engine.put("i", ls.localIteration);
             engine.put("iGlobal", LayoutStatus.globalIterationsDone++);
             
             LayoutStatus.globalTimeElapsed = (int)Duration.between(LayoutStatus.globalStartInstant, Instant.now()).getSeconds();
@@ -1656,9 +1687,9 @@ public class GephiCommander {
                 processOperations(opsToDo);
             }
 
-            if (LayoutStatus.localExportEach != null && 
-                LayoutStatus.localExportEach != 0 &&
-                LayoutStatus.localIteration % LayoutStatus.localExportEach == 0) {
+            if (ls.localExportEach != null && 
+                ls.localExportEach != 0 &&
+                ls.localIteration % ls.localExportEach == 0) {
                 measureGraphBounds();
                 export(exportOptions);
             }
@@ -1666,15 +1697,12 @@ public class GephiCommander {
             // break if maxTime seconds elapsed
             if (maxTime != null && 
                 Duration.between(start, LocalDateTime.now()).getSeconds() > maxTime) {
-                    System.out.printf("Time limit reached at %s iteration.",LayoutStatus.localIteration);
+                    System.out.printf("Time limit reached at %s iteration.",ls.localIteration);
                     break;
             }
                     
         }
-        LayoutStatus.localIteration = null;
-        LayoutStatus.localExportEach = null;
-        LayoutStatus.localIterationsMax = null;
-
+        
         layout.endAlgo();
         System.out.println("Applying "+ layoutName + " is finished.");
     }
@@ -1693,17 +1721,5 @@ public class GephiCommander {
             );
         } catch (Exception ignored) {}
         return null;
-    }
-
-    public static class LayoutStatus {
-        static int globalIterationsDone = 0; // across all layouts
-        static int globalIterationsMax = 0;
-        static Integer localIteration = null; // in current layout
-        static Integer localIterationsMax = null;
-        static Integer localExportEach = null;
-
-        static Layout lastLayout = null;
-        static Instant globalStartInstant = null;
-        static int globalTimeElapsed = 0;   //sec
     }
 }

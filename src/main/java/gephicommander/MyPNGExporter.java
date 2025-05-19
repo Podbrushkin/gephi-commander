@@ -11,6 +11,7 @@ import javax.imageio.ImageIO;
 import javax.script.ScriptEngine;
 
 import org.gephi.io.exporter.preview.PNGExporter;
+import org.gephi.layout.spi.Layout;
 import org.gephi.preview.api.G2DTarget;
 import org.gephi.preview.api.PreviewController;
 import org.gephi.preview.api.PreviewModel;
@@ -25,7 +26,6 @@ import org.openide.util.Lookup;
 
 import com.google.gson.JsonObject;
 
-import gephicommander.GephiCommander.LayoutStatus;
 import static gephicommander.PartitionRenderer.humanReadable;
 
 class MyPNGExporter extends PNGExporter {
@@ -102,7 +102,7 @@ class MyPNGExporter extends PNGExporter {
                 target.setScaling(scaling);
             }
             else if (CameraHandler.hasScaling()) {
-                scaling = CameraHandler.getScalingForIteration(GephiCommander.LayoutStatus.globalIterationsDone);
+                scaling = CameraHandler.getScalingForIteration(LayoutStatus.globalIterationsDone);
                 target.setScaling(scaling);
             }
             
@@ -140,7 +140,7 @@ class MyPNGExporter extends PNGExporter {
                 target.getTranslate().set(xTranslate, yTranslate);
 
             } else if (CameraHandler.hasCenterOn()) {
-                var centerPoint = CameraHandler.getCenterForIteration(GephiCommander.LayoutStatus.globalIterationsDone);
+                var centerPoint = CameraHandler.getCenterForIteration(LayoutStatus.globalIterationsDone);
                 var st = CoordUtils.getToCenterOn(widthImg, heightImg, target.getScaling(), centerPoint);
                 target.getTranslate().set(st.translateX, st.translateY);
 
@@ -173,7 +173,7 @@ class MyPNGExporter extends PNGExporter {
                 // srcGraphics.drawLine(width/2, height/2, (int)pointTr.x, (int)pointTr.y);
                 // srcGraphics.fillOval(0, 0, width/100, height/100);
                 var str = String.format("i=%s sc=%s trX=%s trY=%s",
-                    GephiCommander.LayoutStatus.globalIterationsDone,
+                    LayoutStatus.globalIterationsDone,
                     target.getScaling(),
                     target.getTranslate().x,
                     target.getTranslate().y);
@@ -194,7 +194,7 @@ class MyPNGExporter extends PNGExporter {
             }
 
             if (options.has("drawPartition") &&
-                !options.get("drawPartition").isJsonNull()
+                options.get("drawPartition").getAsBoolean()
                 ) {
                 
                 int fontSize = options.has("drawPartitionFontSize") ? options.get("drawPartitionFontSize").getAsInt() : heightImg/40;
@@ -211,16 +211,19 @@ class MyPNGExporter extends PNGExporter {
             if (options.has("drawLayoutStatus") &&
                 options.get("drawLayoutStatus").getAsBoolean()
                 ) {
-                var lastLayout = GephiCommander.LayoutStatus.lastLayout;
                 var sb = new StringBuilder();
-                // String globalMax = PartitionRenderer.humanReadable
-                sb.append(String.format("%s(%s/%s) global(%s/%s) %ss%n",
-                    lastLayout.getClass().getSimpleName(),
-                    GephiCommander.LayoutStatus.localIteration,humanReadable(GephiCommander.LayoutStatus.localIterationsMax),
-                    GephiCommander.LayoutStatus.globalIterationsDone,humanReadable(GephiCommander.LayoutStatus.globalIterationsMax),
-                    LayoutStatus.globalTimeElapsed
-                ));
-                sb.append(GephiCommander.getLayoutProperties(lastLayout));
+                
+                for (var ls : LayoutStatus.layoutsApplied) {
+                    Layout layout = ls.layout;
+                    sb.append(String.format("> %s(%s/%s) global(%s/%s) %ss%n",
+                        layout.getClass().getSimpleName(),
+                        ls.localIteration,humanReadable(ls.localIterationsMax),
+                        LayoutStatus.globalIterationsDone,humanReadable(LayoutStatus.globalIterationsMax),
+                        LayoutStatus.globalTimeElapsed
+                    ));
+                    sb.append(GephiCommander.getLayoutProperties(layout));
+                }
+                
                 
                 PartitionRenderer.drawMultilineString(imgGraphics, sb.toString(), heightImg/40);
             }

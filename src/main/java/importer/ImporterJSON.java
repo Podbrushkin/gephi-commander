@@ -3,6 +3,7 @@ package importer;
 import java.io.IOException;
 import java.io.Reader;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.gephi.io.importer.api.ContainerLoader;
@@ -80,11 +81,16 @@ public class ImporterJSON implements FileImporter, LongTask {
                 if (nodeObject.has("label")) {
                     nodeDraft.setLabel(nodeObject.get("label").getAsString());
                 }
+
+                if (nodeObject.has("x") && nodeObject.has("y")) {
+                    nodeDraft.setX(nodeObject.get("x").getAsFloat());
+                    nodeDraft.setY(nodeObject.get("y").getAsFloat());
+                }
                 
                 // Handle node attributes
                 for (Map.Entry<String, JsonElement> entry : nodeObject.entrySet()) {
                     String key = entry.getKey();
-                    if (!key.equals("id") && !key.equals("label")) {
+                    if (!List.of("id","label","x","y").contains(key)) {
                         JsonElement value = entry.getValue();
                         if (value.isJsonPrimitive()) {
                             if (value.getAsJsonPrimitive().isString()) {
